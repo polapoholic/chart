@@ -1,10 +1,15 @@
 "use client"
 
-import {useState, useMemo, useRef} from "react"
+import { useState, useMemo, useRef, type ChangeEvent } from "react"
 import * as XLSX from "xlsx"
 import dynamic from "next/dynamic"
-import type { ChangeEvent } from "react"
 
+// ECharts 컴포넌트는 브라우저에서만 렌더링되게 dynamic import
+const ReactECharts = dynamic(() => import("echarts-for-react"), {
+  ssr: false
+})
+
+// ========= 유틸 함수들 ==========
 function normalizeMonth(value: any): string {
   if (value == null || value === "") return ""
 
@@ -34,11 +39,6 @@ function toNumber(value: any): number {
   return isNaN(n) ? 0 : n
 }
 
-// ECharts 컴포넌트는 브라우저에서만 렌더링되게 dynamic import
-const ReactECharts = dynamic(() => import("echarts-for-react"), {
-  ssr: false
-})
-
 // 엑셀에서 뽑아낸 데이터 구조 타입
 interface ChartData {
   months: string[]
@@ -50,6 +50,60 @@ interface ChartData {
   totalHits: number[]
 }
 
+// ========= 공통 스타일 (글래스 대시보드) ==========
+const pageStyle: React.CSSProperties = {
+  minHeight: "100vh",
+  padding: "2.5rem 1.5rem",
+  display: "flex",
+  flexDirection: "column",
+  gap: "2rem",
+  background: "radial-gradient(circle at top, #020617 0, #020617 40%, #000000 100%)",
+  color: "#e5e7eb"
+}
+
+const containerStyle: React.CSSProperties = {
+  maxWidth: "1400px",
+  margin: "0 auto",
+  width: "100%"
+}
+
+const glassPanel: React.CSSProperties = {
+  background: "rgba(15, 23, 42, 0.6)",
+  boxShadow: "0 24px 60px rgba(0,0,0,0.7)",
+  borderRadius: "1.2rem",
+  border: "1px solid rgba(148, 163, 184, 0.35)",
+  backdropFilter: "blur(18px)",
+  WebkitBackdropFilter: "blur(18px)"
+}
+
+const glassCardBase: React.CSSProperties = {
+  background: "rgba(15, 23, 42, 0.7)",
+  backdropFilter: "blur(16px)",
+  WebkitBackdropFilter: "blur(16px)",
+  borderRadius: "1rem",
+  border: "1px solid rgba(148,163,184,0.45)",
+  padding: "1.1rem 1.3rem",
+  color: "#f8fafc",
+  boxShadow: "0 18px 40px rgba(15,23,42,0.8)"
+}
+
+// 카드별 상단 색 포인트
+const accentBlue: React.CSSProperties = {
+  borderTop: "3px solid rgba(96,165,250,0.85)"
+}
+const accentGreen: React.CSSProperties = {
+  borderTop: "3px solid rgba(52,211,153,0.85)"
+}
+const accentAmber: React.CSSProperties = {
+  borderTop: "3px solid rgba(251,191,36,0.85)"
+}
+const accentSky: React.CSSProperties = {
+  borderTop: "3px solid rgba(56,189,248,0.85)"
+}
+const accentViolet: React.CSSProperties = {
+  borderTop: "3px solid rgba(129,140,248,0.9)"
+}
+
 export default function HomePage() {
   const [chartData, setChartData] = useState<ChartData | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
@@ -59,8 +113,7 @@ export default function HomePage() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    setFileName(file.name) // 🔹 이 줄 추가
-
+    setFileName(file.name)
 
     try {
       const buffer = await file.arrayBuffer()
@@ -87,8 +140,7 @@ export default function HomePage() {
       const firstRow = rows[0]
       const firstCell = firstRow[0]
       const looksLikeHeader =
-          typeof firstCell === "string" &&
-          firstCell.toLowerCase().includes("month")
+          typeof firstCell === "string" && firstCell.toLowerCase().includes("month")
 
       const dataRows = looksLikeHeader ? rows.slice(1) : rows
 
@@ -130,10 +182,6 @@ export default function HomePage() {
         return
       }
 
-      console.log("months:", months)
-      console.log("menu1:", menu1)
-      console.log("totalHits:", totalHits)
-
       setChartData({
         months,
         menu1,
@@ -149,6 +197,7 @@ export default function HomePage() {
     }
   }
 
+  // 간단 KPI + 연도별 평균 계산
   const kpi = useMemo(() => {
     if (!chartData) return null
 
@@ -161,7 +210,7 @@ export default function HomePage() {
         totalHits.length > 0 ? Math.round(totalHitSum / totalHits.length) : 0
     const latestIndex = months.length - 1
 
-    // 🔹 연도별 집계용 맵
+    // 연도별 집계
     type YearAgg = {
       menuSum: number
       userSum: number
@@ -191,7 +240,6 @@ export default function HomePage() {
       yearlyMap[year].count += 1
     })
 
-    // 🔹 연도별 평균 배열로 변환
     const yearlyStats = Object.entries(yearlyMap).map(
         ([year, { menuSum, userSum, hitSum, count }]) => ({
           year,
@@ -201,10 +249,11 @@ export default function HomePage() {
         })
     )
 
-    // 🔹 가장 최근 연도 선택 (문자열이라 sort로 정렬)
     const latestYearStat =
         yearlyStats.length > 0
-            ? [...yearlyStats].sort((a, b) => a.year.localeCompare(b.year)).slice(-1)[0]
+            ? [...yearlyStats]
+                .sort((a, b) => a.year.localeCompare(b.year))
+                .slice(-1)[0]
             : null
 
     return {
@@ -212,11 +261,9 @@ export default function HomePage() {
       totalUserSum,
       avgHits,
       latestMonth: months[latestIndex] ?? "-",
-      latestYearStat    // ⬅️ 연도별 평균 중 "가장 최근 연도" 통계
+      latestYearStat
     }
   }, [chartData])
-
-
 
   const getMenuChartOption = () => {
     if (!chartData) return {}
@@ -234,7 +281,7 @@ export default function HomePage() {
       },
       tooltip: {
         trigger: "axis",
-        backgroundColor: "rgba(15,23,42,0.9)",
+        backgroundColor: "rgba(15,23,42,0.95)",
         borderColor: "#475569",
         textStyle: { color: "#e2e8f0" }
       },
@@ -263,30 +310,10 @@ export default function HomePage() {
         splitLine: { lineStyle: { color: "#334155" } }
       },
       series: [
-        {
-          name: "Menu1",
-          type: "line",
-          smooth: true,
-          data: menu1
-        },
-        {
-          name: "Menu2",
-          type: "line",
-          smooth: true,
-          data: menu2
-        },
-        {
-          name: "Menu3",
-          type: "line",
-          smooth: true,
-          data: menu3
-        },
-        {
-          name: "Menu4",
-          type: "line",
-          smooth: true,
-          data: menu4
-        }
+        { name: "Menu1", type: "line", smooth: true, data: menu1 },
+        { name: "Menu2", type: "line", smooth: true, data: menu2 },
+        { name: "Menu3", type: "line", smooth: true, data: menu3 },
+        { name: "Menu4", type: "line", smooth: true, data: menu4 }
       ]
     }
   }
@@ -307,7 +334,7 @@ export default function HomePage() {
       },
       tooltip: {
         trigger: "axis",
-        backgroundColor: "rgba(15,23,42,0.9)",
+        backgroundColor: "rgba(15,23,42,0.95)",
         borderColor: "#475569",
         textStyle: { color: "#e2e8f0" }
       },
@@ -336,391 +363,319 @@ export default function HomePage() {
         splitLine: { lineStyle: { color: "#334155" } }
       },
       series: [
-        {
-          name: "Unique Users",
-          type: "line",
-          smooth: true,
-          data: uniqueUsers
-        },
-        {
-          name: "Total Hits",
-          type: "line",
-          smooth: true,
-          data: totalHits
-        }
+        { name: "Unique Users", type: "line", smooth: true, data: uniqueUsers },
+        { name: "Total Hits", type: "line", smooth: true, data: totalHits }
       ]
     }
   }
 
   return (
-      <main
-          style={{
-            minHeight: "100vh",
-            padding: "2rem",
-            display: "flex",
-            flexDirection: "column",
-            gap: "2rem",
-            background: "#020617",
-            color: "#e5e7eb"
-          }}
-      >
-        {/* 상단 헤더 영역 */}
-        <header
-            style={{
-              maxWidth: "1400px",
-              margin: "0 auto",
-              width: "100%",
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.5rem"
-            }}
-        >
-          <h1 style={{ fontSize: "2rem", fontWeight: 600 }}>
-            월별 사용 통계 대시보드
-          </h1>
-          <p
+      <main style={pageStyle}>
+        {/* ===== 헤더 (글래스) ===== */}
+        <header style={{ ...containerStyle }}>
+          <div
               style={{
-                fontSize: "0.95rem",
-                opacity: 0.8
+                ...glassPanel,
+                padding: "1.6rem 1.8rem",
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.5rem"
               }}
           >
-            A열: Month, B~E열: Menu1~4 HIT, F열: UniqueUsers, G열: TotalHits 형태의
-            엑셀 파일을 업로드하세요.
-          </p>
+            <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "1rem",
+                  flexWrap: "wrap"
+                }}
+            >
+              <div>
+                <h1
+                    style={{
+                      fontSize: "1.9rem",
+                      fontWeight: 700,
+                      letterSpacing: "-0.03em"
+                    }}
+                >
+                  월별 사용 통계 대시보드
+                </h1>
+                <p
+                    style={{
+                      fontSize: "0.95rem",
+                      opacity: 0.8,
+                      marginTop: "0.25rem"
+                    }}
+                >
+                  A열: Month, B~E열: Menu1~4 HIT, F열: UniqueUsers, G열: TotalHits
+                  구조의 Excel(.xlsx)을 업로드하면 자동으로 통계가 시각화됩니다.
+                </p>
+              </div>
+
+              {/* 업로드 영역 (글래스 pill) */}
+              <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.4rem",
+                    alignItems: "flex-end",
+                    minWidth: "260px"
+                  }}
+              >
+                <div
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      padding: "0.7rem 1rem",
+                      borderRadius: "999px",
+                      background:
+                          "linear-gradient(135deg, rgba(56,189,248,0.14), rgba(129,140,248,0.22))",
+                      border: "1px solid rgba(148,163,184,0.7)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "0.7rem",
+                      cursor: "pointer",
+                      minWidth: "260px",
+                      boxShadow: "0 14px 35px rgba(15,23,42,0.9)"
+                    }}
+                >
+                <span style={{ fontSize: "0.85rem" }}>
+                  {fileName
+                      ? `선택된 파일: ${fileName}`
+                      : "Excel(.xlsx) 파일을 업로드하세요"}
+                </span>
+                  <span
+                      style={{
+                        fontSize: "0.78rem",
+                        padding: "0.3rem 0.8rem",
+                        borderRadius: "999px",
+                        background: "rgba(15,23,42,0.95)",
+                        border: "1px solid rgba(129,140,248,0.9)"
+                      }}
+                  >
+                  파일 선택
+                </span>
+                </div>
+
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".xlsx"
+                    onChange={handleFileChange}
+                    style={{ display: "none" }}
+                />
+
+                {fileName && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                          if (fileInputRef.current) fileInputRef.current.value = ""
+                          setFileName(null)
+                          setChartData(null)
+                        }}
+                        style={{
+                          fontSize: "0.8rem",
+                          color: "#fecaca",
+                          background: "transparent",
+                          border: "none",
+                          cursor: "pointer",
+                          textDecoration: "underline",
+                          padding: 0
+                        }}
+                    >
+                      파일 다시 선택 / 초기화
+                    </button>
+                )}
+              </div>
+            </div>
+          </div>
         </header>
 
-        {/* 업로드 카드 */}
-        <section
-            style={{
-              maxWidth: "1400px",
-              margin: "0 auto",
-              width: "100%",
-              background: "#0f172a",
-              padding: "1.5rem",
-              borderRadius: "1rem",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "1rem",
-              flexWrap: "wrap",
-              boxShadow: "0 20px 40px rgba(15,23,42,0.5)"
-            }}
-        >
-          <div>
-            <h2 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>
-              데이터 업로드
-            </h2>
-            <p style={{ fontSize: "0.9rem", opacity: 0.8 }}>
-              DRM 해제된 Excel(.xlsx) 파일을 선택하면 메뉴별·사용자별 통계를
-              그래프로 시각화합니다.
-            </p>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            {/* 예쁜 업로드 박스 */}
-            <div
-                onClick={() => fileInputRef.current?.click()}
-                style={{
-                  minWidth: "260px",
-                  padding: "0.75rem 1rem",
-                  borderRadius: "9999px",
-                  border: "1px dashed #64748b",
-                  background:
-                      "linear-gradient(135deg, rgba(15,23,42,0.8), rgba(30,64,175,0.5))",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "0.75rem"
-                }}
-            >
-      <span style={{ fontSize: "0.9rem" }}>
-        {fileName
-            ? `선택된 파일: ${fileName}`
-            : "엑셀 파일을 클릭하여 업로드 (.xlsx)"}
-      </span>
-              <span
-                  style={{
-                    fontSize: "0.8rem",
-                    padding: "0.3rem 0.7rem",
-                    borderRadius: "9999px",
-                    background: "#0f172a",
-                    border: "1px solid #1d4ed8"
-                  }}
-              >
-        파일 선택
-      </span>
-            </div>
-
-            {/* 실제 input은 숨김 */}
-            <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx"
-                onChange={handleFileChange}
-                style={{ display: "none" }}
-            />
-
-            {/* 재업로드 / 초기화 버튼 */}
-            {fileName && (
-                <button
-                    type="button"
-                    onClick={() => {
-                      if (fileInputRef.current) {
-                        fileInputRef.current.value = ""
-                      }
-                      setFileName(null)
-                      setChartData(null) // 차트도 초기화하고 싶으면 유지, 아니면 이 줄 삭제
-                    }}
-                    style={{
-                      alignSelf: "flex-end",
-                      fontSize: "0.8rem",
-                      color: "#f97373",
-                      background: "transparent",
-                      border: "none",
-                      cursor: "pointer",
-                      textDecoration: "underline",
-                      padding: 0
-                    }}
-                >
-                  파일 다시 선택하기
-                </button>
-            )}
-          </div>
-        </section>
-
-
-        {/* KPI 카드 */}
+        {/* ===== KPI 카드 영역 (글래스 카드) ===== */}
         {chartData && kpi && (
-            <section
-                style={{
-                  maxWidth: "1400px",
-                  margin: "0 auto",
-                  width: "100%",
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                  gap: "1rem"
-                }}
-            >
-              {/* 1. 전체 기간 Total Hits */}
+            <section style={containerStyle}>
               <div
                   style={{
-                    background: "linear-gradient(135deg, #0f172a, #1e293b)",
-                    padding: "1rem 1.2rem",
-                    borderRadius: "0.9rem",
-                    border: "1px solid #1e293b"
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: "1rem"
                   }}
               >
-                <div style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-                  전체 기간 Total Hits
+                {/* 1. 전체 기간 Total Hits */}
+                <div style={{ ...glassCardBase, ...accentBlue }}>
+                  <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
+                    전체 기간 Total Hits
+                  </div>
+                  <div
+                      style={{
+                        fontSize: "1.6rem",
+                        fontWeight: 700,
+                        marginTop: "0.35rem",
+                        letterSpacing: "-0.03em"
+                      }}
+                  >
+                    {kpi.totalHitSum.toLocaleString()}
+                  </div>
                 </div>
-                <div
-                    style={{
-                      fontSize: "1.4rem",
-                      fontWeight: 600,
-                      marginTop: "0.25rem"
-                    }}
-                >
-                  {kpi.totalHitSum.toLocaleString()}
+
+                {/* 2. 전체 기간 Unique Users 합계 */}
+                <div style={{ ...glassCardBase, ...accentGreen }}>
+                  <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
+                    전체 기간 Unique Users 합계
+                  </div>
+                  <div
+                      style={{
+                        fontSize: "1.6rem",
+                        fontWeight: 700,
+                        marginTop: "0.35rem",
+                        letterSpacing: "-0.03em"
+                      }}
+                  >
+                    {kpi.totalUserSum.toLocaleString()}
+                  </div>
                 </div>
+
+                {/* 3. 전체 기간 월 평균 Total Hits */}
+                <div style={{ ...glassCardBase, ...accentSky }}>
+                  <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
+                    전체 기간 월 평균 Total Hits
+                  </div>
+                  <div
+                      style={{
+                        fontSize: "1.6rem",
+                        fontWeight: 700,
+                        marginTop: "0.35rem",
+                        letterSpacing: "-0.03em"
+                      }}
+                  >
+                    {kpi.avgHits.toLocaleString()}
+                  </div>
+                  <div
+                      style={{
+                        fontSize: "0.8rem",
+                        opacity: 0.7,
+                        marginTop: "0.25rem"
+                      }}
+                  >
+                    기준 월 수: {chartData.totalHits.length}
+                  </div>
+                </div>
+
+                {/* 4. 가장 최근 월 */}
+                <div style={{ ...glassCardBase, ...accentViolet }}>
+                  <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>가장 최근 월</div>
+                  <div
+                      style={{
+                        fontSize: "1.6rem",
+                        fontWeight: 700,
+                        marginTop: "0.35rem",
+                        letterSpacing: "-0.03em"
+                      }}
+                  >
+                    {kpi.latestMonth}
+                  </div>
+                </div>
+
+                {/* 5~7. 최신 연도 기준 연평균 카드 */}
+                {kpi.latestYearStat && (
+                    <>
+                      {/* 최신 연도 메뉴 HIT 연평균 */}
+                      <div style={{ ...glassCardBase, ...accentAmber }}>
+                        <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
+                          {kpi.latestYearStat.year}년 메뉴 HIT 연평균
+                        </div>
+                        <div
+                            style={{
+                              fontSize: "1.6rem",
+                              fontWeight: 700,
+                              marginTop: "0.35rem",
+                              letterSpacing: "-0.03em"
+                            }}
+                        >
+                          {kpi.latestYearStat.menuAvg.toLocaleString()}
+                        </div>
+                        <div
+                            style={{
+                              fontSize: "0.78rem",
+                              opacity: 0.7,
+                              marginTop: "0.25rem"
+                            }}
+                        >
+                          (Menu1~4 합산 기준)
+                        </div>
+                      </div>
+
+                      {/* 최신 연도 고유 접속자 연평균 */}
+                      <div style={{ ...glassCardBase, ...accentGreen }}>
+                        <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
+                          {kpi.latestYearStat.year}년 고유 접속자 연평균
+                        </div>
+                        <div
+                            style={{
+                              fontSize: "1.6rem",
+                              fontWeight: 700,
+                              marginTop: "0.35rem",
+                              letterSpacing: "-0.03em"
+                            }}
+                        >
+                          {kpi.latestYearStat.userAvg.toLocaleString()}
+                        </div>
+                      </div>
+
+                      {/* 최신 연도 Total Hits 연평균 */}
+                      <div style={{ ...glassCardBase, ...accentBlue }}>
+                        <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
+                          {kpi.latestYearStat.year}년 Total Hits 연평균
+                        </div>
+                        <div
+                            style={{
+                              fontSize: "1.6rem",
+                              fontWeight: 700,
+                              marginTop: "0.35rem",
+                              letterSpacing: "-0.03em"
+                            }}
+                        >
+                          {kpi.latestYearStat.hitAvg.toLocaleString()}
+                        </div>
+                      </div>
+                    </>
+                )}
               </div>
-
-              {/* 2. 전체 기간 Unique Users 합계 */}
-              <div
-                  style={{
-                    background: "linear-gradient(135deg, #0f172a, #1f2937)",
-                    padding: "1rem 1.2rem",
-                    borderRadius: "0.9rem",
-                    border: "1px solid #1e293b"
-                  }}
-              >
-                <div style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-                  전체 기간 Unique Users 합계
-                </div>
-                <div
-                    style={{
-                      fontSize: "1.4rem",
-                      fontWeight: 600,
-                      marginTop: "0.25rem"
-                    }}
-                >
-                  {kpi.totalUserSum.toLocaleString()}
-                </div>
-              </div>
-
-              {/* 3. 전체 기간 월 평균 Total Hits */}
-              <div
-                  style={{
-                    background: "linear-gradient(135deg, #0f172a, #111827)",
-                    padding: "1rem 1.2rem",
-                    borderRadius: "0.9rem",
-                    border: "1px solid #1e293b"
-                  }}
-              >
-                <div style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-                  전체 기간 월 평균 Total Hits
-                </div>
-                <div
-                    style={{
-                      fontSize: "1.4rem",
-                      fontWeight: 600,
-                      marginTop: "0.25rem"
-                    }}
-                >
-                  {kpi.avgHits.toLocaleString()}
-                </div>
-                <div
-                    style={{
-                      fontSize: "0.8rem",
-                      opacity: 0.7,
-                      marginTop: "0.25rem"
-                    }}
-                >
-                  기준 월 수: {chartData.totalHits.length}
-                </div>
-              </div>
-
-              {/* 4. 가장 최근 월 */}
-              <div
-                  style={{
-                    background: "linear-gradient(135deg, #0f172a, #1e293b)",
-                    padding: "1rem 1.2rem",
-                    borderRadius: "0.9rem",
-                    border: "1px solid #1e293b"
-                  }}
-              >
-                <div style={{ fontSize: "0.85rem", opacity: 0.8 }}>가장 최근 월</div>
-                <div
-                    style={{
-                      fontSize: "1.4rem",
-                      fontWeight: 600,
-                      marginTop: "0.25rem"
-                    }}
-                >
-                  {kpi.latestMonth}
-                </div>
-              </div>
-
-              {/* 🔹 5~7. "연도별 평균" 카드들 (가장 최근 연도 기준) */}
-              {kpi.latestYearStat && (
-                  <>
-                    {/* 5. 최신 연도 메뉴 HIT 연평균 */}
-                    <div
-                        style={{
-                          background: "linear-gradient(135deg, #020617, #0f172a)",
-                          padding: "1rem 1.2rem",
-                          borderRadius: "0.9rem",
-                          border: "1px solid #1e293b"
-                        }}
-                    >
-                      <div style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-                        {kpi.latestYearStat.year}년 메뉴 HIT 연평균
-                      </div>
-                      <div
-                          style={{
-                            fontSize: "1.4rem",
-                            fontWeight: 600,
-                            marginTop: "0.25rem"
-                          }}
-                      >
-                        {kpi.latestYearStat.menuAvg.toLocaleString()}
-                      </div>
-                      <div
-                          style={{
-                            fontSize: "0.8rem",
-                            opacity: 0.7,
-                            marginTop: "0.25rem"
-                          }}
-                      >
-                        (Menu1~4 합산 기준)
-                      </div>
-                    </div>
-
-                    {/* 6. 최신 연도 고유 접속자 연평균 */}
-                    <div
-                        style={{
-                          background: "linear-gradient(135deg, #020617, #0f172a)",
-                          padding: "1rem 1.2rem",
-                          borderRadius: "0.9rem",
-                          border: "1px solid #1e293b"
-                        }}
-                    >
-                      <div style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-                        {kpi.latestYearStat.year}년 고유 접속자 연평균
-                      </div>
-                      <div
-                          style={{
-                            fontSize: "1.4rem",
-                            fontWeight: 600,
-                            marginTop: "0.25rem"
-                          }}
-                      >
-                        {kpi.latestYearStat.userAvg.toLocaleString()}
-                      </div>
-                    </div>
-
-                    {/* 7. 최신 연도 Total Hits 연평균 */}
-                    <div
-                        style={{
-                          background: "linear-gradient(135deg, #020617, #0f172a)",
-                          padding: "1rem 1.2rem",
-                          borderRadius: "0.9rem",
-                          border: "1px solid #1e293b"
-                        }}
-                    >
-                      <div style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-                        {kpi.latestYearStat.year}년 Total Hits 연평균
-                      </div>
-                      <div
-                          style={{
-                            fontSize: "1.4rem",
-                            fontWeight: 600,
-                            marginTop: "0.25rem"
-                          }}
-                      >
-                        {kpi.latestYearStat.hitAvg.toLocaleString()}
-                      </div>
-                    </div>
-                  </>
-              )}
             </section>
         )}
 
-
-
-        {/* 차트 영역 */}
+        {/* ===== 차트 영역 (글래스 패널) ===== */}
         {chartData && (
             <>
-              <section
-                  style={{
-                    margin: "0 auto",
-                    width: "100%",
-                    background: "#020617",
-                    padding: "1.5rem",
-                    borderRadius: "1rem",
-                    boxShadow: "0 20px 40px rgba(15,23,42,0.7)"
-                  }}
-              >
-                <ReactECharts
-                    option={getMenuChartOption()}
-                    style={{ width: "100%", height: "70vh" }} // 🔥 크게!
-                />
+              <section style={containerStyle}>
+                <div
+                    style={{
+                      ...glassPanel,
+                      padding: "1.4rem 1.2rem",
+                      marginTop: "0.5rem"
+                    }}
+                >
+                  <ReactECharts
+                      option={getMenuChartOption()}
+                      style={{ width: "100%", height: "70vh" }}
+                  />
+                </div>
               </section>
 
-              <section
-                  style={{
-                    margin: "0 auto",
-                    width: "100%",
-                    background: "#020617",
-                    padding: "1.5rem",
-                    borderRadius: "1rem",
-                    boxShadow: "0 20px 40px rgba(15,23,42,0.7)"
-                  }}
-              >
-                <ReactECharts
-                    option={getHitChartOption()}
-                    style={{ width: "100%", height: "60vh" }}
-                />
+              <section style={containerStyle}>
+                <div
+                    style={{
+                      ...glassPanel,
+                      padding: "1.4rem 1.2rem",
+                      marginTop: "0.5rem"
+                    }}
+                >
+                  <ReactECharts
+                      option={getHitChartOption()}
+                      style={{ width: "100%", height: "60vh" }}
+                  />
+                </div>
               </section>
             </>
         )}
