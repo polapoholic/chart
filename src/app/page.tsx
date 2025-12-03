@@ -563,6 +563,41 @@ export default function HomePage() {
           </div>
         </header>
 
+        {/* ===== 차트 영역 (글래스 패널) ===== */}
+        {chartData && (
+            <>
+              <section style={containerStyle}>
+                <div
+                    style={{
+                      ...glassPanel,
+                      padding: "1.4rem 1.2rem",
+                      marginTop: "0.5rem"
+                    }}
+                >
+                  <ReactECharts
+                      option={getMenuChartOption()}
+                      style={{ width: "100%", height: "70vh" }}
+                  />
+                </div>
+              </section>
+
+              <section style={containerStyle}>
+                <div
+                    style={{
+                      ...glassPanel,
+                      padding: "1.4rem 1.2rem",
+                      marginTop: "0.5rem"
+                    }}
+                >
+                  <ReactECharts
+                      option={getHitChartOption()}
+                      style={{ width: "100%", height: "60vh" }}
+                  />
+                </div>
+              </section>
+            </>
+        )}
+
         {/* ===== KPI 카드 영역 (글래스 카드) ===== */}
         {chartData && kpi && (
             <section style={containerStyle}>
@@ -880,42 +915,6 @@ export default function HomePage() {
                 )}
               </div>
             </section>
-        )}
-
-
-        {/* ===== 차트 영역 (글래스 패널) ===== */}
-        {chartData && (
-            <>
-              <section style={containerStyle}>
-                <div
-                    style={{
-                      ...glassPanel,
-                      padding: "1.4rem 1.2rem",
-                      marginTop: "0.5rem"
-                    }}
-                >
-                  <ReactECharts
-                      option={getMenuChartOption()}
-                      style={{ width: "100%", height: "70vh" }}
-                  />
-                </div>
-              </section>
-
-              <section style={containerStyle}>
-                <div
-                    style={{
-                      ...glassPanel,
-                      padding: "1.4rem 1.2rem",
-                      marginTop: "0.5rem"
-                    }}
-                >
-                  <ReactECharts
-                      option={getHitChartOption()}
-                      style={{ width: "100%", height: "60vh" }}
-                  />
-                </div>
-              </section>
-            </>
         )}
       </main>
   )
