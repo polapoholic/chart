@@ -149,41 +149,73 @@ export default function HomePage() {
     }
   }
 
-  // 간단 KPI 계산 (총합/최근월)
   const kpi = useMemo(() => {
     if (!chartData) return null
 
-    const { months, totalHits, uniqueUsers } = chartData
+    const { months, totalHits, uniqueUsers, menu1, menu2, menu3, menu4 } = chartData
+
+    // 전체 구간 KPI
     const totalHitSum = totalHits.reduce((a, b) => a + b, 0)
     const totalUserSum = uniqueUsers.reduce((a, b) => a + b, 0)
     const avgHits =
         totalHits.length > 0 ? Math.round(totalHitSum / totalHits.length) : 0
     const latestIndex = months.length - 1
 
-    // 🔹 연도별 평균 계산
-    const yearlyMap: Record<string, { sum: number; count: number }> = {}
+    // 🔹 연도별 집계용 맵
+    type YearAgg = {
+      menuSum: number
+      userSum: number
+      hitSum: number
+      count: number
+    }
+
+    const yearlyMap: Record<string, YearAgg> = {}
+
     months.forEach((m, idx) => {
-      const [year] = m.split("-") // "2024-01" → "2024"
+      const [year] = m.split("-")
+      if (!year) return
+
       if (!yearlyMap[year]) {
-        yearlyMap[year] = { sum: 0, count: 0 }
+        yearlyMap[year] = { menuSum: 0, userSum: 0, hitSum: 0, count: 0 }
       }
-      yearlyMap[year].sum += totalHits[idx] ?? 0
+
+      const menuTotal =
+          (menu1[idx] ?? 0) +
+          (menu2[idx] ?? 0) +
+          (menu3[idx] ?? 0) +
+          (menu4[idx] ?? 0)
+
+      yearlyMap[year].menuSum += menuTotal
+      yearlyMap[year].userSum += uniqueUsers[idx] ?? 0
+      yearlyMap[year].hitSum += totalHits[idx] ?? 0
       yearlyMap[year].count += 1
     })
 
-    const yearlyAvg = Object.entries(yearlyMap).map(([year, { sum, count }]) => ({
-      year,
-      avg: count > 0 ? Math.round(sum / count) : 0
-    }))
+    // 🔹 연도별 평균 배열로 변환
+    const yearlyStats = Object.entries(yearlyMap).map(
+        ([year, { menuSum, userSum, hitSum, count }]) => ({
+          year,
+          menuAvg: count > 0 ? Math.round(menuSum / count) : 0,
+          userAvg: count > 0 ? Math.round(userSum / count) : 0,
+          hitAvg: count > 0 ? Math.round(hitSum / count) : 0
+        })
+    )
+
+    // 🔹 가장 최근 연도 선택 (문자열이라 sort로 정렬)
+    const latestYearStat =
+        yearlyStats.length > 0
+            ? [...yearlyStats].sort((a, b) => a.year.localeCompare(b.year)).slice(-1)[0]
+            : null
 
     return {
       totalHitSum,
       totalUserSum,
       avgHits,
       latestMonth: months[latestIndex] ?? "-",
-      yearlyAvg      // 🔹 추가
+      latestYearStat    // ⬅️ 연도별 평균 중 "가장 최근 연도" 통계
     }
   }, [chartData])
+
 
 
   const getMenuChartOption = () => {
@@ -358,7 +390,6 @@ export default function HomePage() {
         </header>
 
         {/* 업로드 카드 */}
-        {/* 업로드 카드 */}
         <section
             style={{
               maxWidth: "1400px",
@@ -460,7 +491,6 @@ export default function HomePage() {
 
 
         {/* KPI 카드 */}
-        {/* KPI 카드 */}
         {chartData && kpi && (
             <section
                 style={{
@@ -472,50 +502,190 @@ export default function HomePage() {
                   gap: "1rem"
                 }}
             >
-              {/* 기존 4개 카드 그대로 유지 ... */}
+              {/* 1. 전체 기간 Total Hits */}
+              <div
+                  style={{
+                    background: "linear-gradient(135deg, #0f172a, #1e293b)",
+                    padding: "1rem 1.2rem",
+                    borderRadius: "0.9rem",
+                    border: "1px solid #1e293b"
+                  }}
+              >
+                <div style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+                  전체 기간 Total Hits
+                </div>
+                <div
+                    style={{
+                      fontSize: "1.4rem",
+                      fontWeight: 600,
+                      marginTop: "0.25rem"
+                    }}
+                >
+                  {kpi.totalHitSum.toLocaleString()}
+                </div>
+              </div>
 
-              {/* 🔹 연도별 평균 카드 */}
-              {kpi.yearlyAvg && kpi.yearlyAvg.length > 0 && (
-                  <div
-                      style={{
-                        gridColumn: "1 / -1",
-                        background: "linear-gradient(135deg, #020617, #0f172a)",
-                        padding: "1rem 1.2rem",
-                        borderRadius: "0.9rem",
-                        border: "1px solid #1e293b",
-                        marginTop: "0.5rem"
-                      }}
-                  >
-                    <div style={{ fontSize: "0.85rem", opacity: 0.8, marginBottom: "0.3rem" }}>
-                      연도별 평균 Total Hits
-                    </div>
+              {/* 2. 전체 기간 Unique Users 합계 */}
+              <div
+                  style={{
+                    background: "linear-gradient(135deg, #0f172a, #1f2937)",
+                    padding: "1rem 1.2rem",
+                    borderRadius: "0.9rem",
+                    border: "1px solid #1e293b"
+                  }}
+              >
+                <div style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+                  전체 기간 Unique Users 합계
+                </div>
+                <div
+                    style={{
+                      fontSize: "1.4rem",
+                      fontWeight: 600,
+                      marginTop: "0.25rem"
+                    }}
+                >
+                  {kpi.totalUserSum.toLocaleString()}
+                </div>
+              </div>
+
+              {/* 3. 전체 기간 월 평균 Total Hits */}
+              <div
+                  style={{
+                    background: "linear-gradient(135deg, #0f172a, #111827)",
+                    padding: "1rem 1.2rem",
+                    borderRadius: "0.9rem",
+                    border: "1px solid #1e293b"
+                  }}
+              >
+                <div style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+                  전체 기간 월 평균 Total Hits
+                </div>
+                <div
+                    style={{
+                      fontSize: "1.4rem",
+                      fontWeight: 600,
+                      marginTop: "0.25rem"
+                    }}
+                >
+                  {kpi.avgHits.toLocaleString()}
+                </div>
+                <div
+                    style={{
+                      fontSize: "0.8rem",
+                      opacity: 0.7,
+                      marginTop: "0.25rem"
+                    }}
+                >
+                  기준 월 수: {chartData.totalHits.length}
+                </div>
+              </div>
+
+              {/* 4. 가장 최근 월 */}
+              <div
+                  style={{
+                    background: "linear-gradient(135deg, #0f172a, #1e293b)",
+                    padding: "1rem 1.2rem",
+                    borderRadius: "0.9rem",
+                    border: "1px solid #1e293b"
+                  }}
+              >
+                <div style={{ fontSize: "0.85rem", opacity: 0.8 }}>가장 최근 월</div>
+                <div
+                    style={{
+                      fontSize: "1.4rem",
+                      fontWeight: 600,
+                      marginTop: "0.25rem"
+                    }}
+                >
+                  {kpi.latestMonth}
+                </div>
+              </div>
+
+              {/* 🔹 5~7. "연도별 평균" 카드들 (가장 최근 연도 기준) */}
+              {kpi.latestYearStat && (
+                  <>
+                    {/* 5. 최신 연도 메뉴 HIT 연평균 */}
                     <div
                         style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: "0.75rem",
-                          fontSize: "0.9rem"
+                          background: "linear-gradient(135deg, #020617, #0f172a)",
+                          padding: "1rem 1.2rem",
+                          borderRadius: "0.9rem",
+                          border: "1px solid #1e293b"
                         }}
                     >
-                      {kpi.yearlyAvg.map((item) => (
-                          <span
-                              key={item.year}
-                              style={{
-                                padding: "0.35rem 0.7rem",
-                                borderRadius: "9999px",
-                                background: "#020617",
-                                border: "1px solid #1e293b"
-                              }}
-                          >
-              {item.year}년 :{" "}
-                            <strong>{item.avg.toLocaleString()}</strong>
-            </span>
-                      ))}
+                      <div style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+                        {kpi.latestYearStat.year}년 메뉴 HIT 연평균
+                      </div>
+                      <div
+                          style={{
+                            fontSize: "1.4rem",
+                            fontWeight: 600,
+                            marginTop: "0.25rem"
+                          }}
+                      >
+                        {kpi.latestYearStat.menuAvg.toLocaleString()}
+                      </div>
+                      <div
+                          style={{
+                            fontSize: "0.8rem",
+                            opacity: 0.7,
+                            marginTop: "0.25rem"
+                          }}
+                      >
+                        (Menu1~4 합산 기준)
+                      </div>
                     </div>
-                  </div>
+
+                    {/* 6. 최신 연도 고유 접속자 연평균 */}
+                    <div
+                        style={{
+                          background: "linear-gradient(135deg, #020617, #0f172a)",
+                          padding: "1rem 1.2rem",
+                          borderRadius: "0.9rem",
+                          border: "1px solid #1e293b"
+                        }}
+                    >
+                      <div style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+                        {kpi.latestYearStat.year}년 고유 접속자 연평균
+                      </div>
+                      <div
+                          style={{
+                            fontSize: "1.4rem",
+                            fontWeight: 600,
+                            marginTop: "0.25rem"
+                          }}
+                      >
+                        {kpi.latestYearStat.userAvg.toLocaleString()}
+                      </div>
+                    </div>
+
+                    {/* 7. 최신 연도 Total Hits 연평균 */}
+                    <div
+                        style={{
+                          background: "linear-gradient(135deg, #020617, #0f172a)",
+                          padding: "1rem 1.2rem",
+                          borderRadius: "0.9rem",
+                          border: "1px solid #1e293b"
+                        }}
+                    >
+                      <div style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+                        {kpi.latestYearStat.year}년 Total Hits 연평균
+                      </div>
+                      <div
+                          style={{
+                            fontSize: "1.4rem",
+                            fontWeight: 600,
+                            marginTop: "0.25rem"
+                          }}
+                      >
+                        {kpi.latestYearStat.hitAvg.toLocaleString()}
+                      </div>
+                    </div>
+                  </>
               )}
             </section>
         )}
+
 
 
         {/* 차트 영역 */}
