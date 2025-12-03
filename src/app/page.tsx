@@ -77,6 +77,16 @@ const glassPanel: React.CSSProperties = {
   WebkitBackdropFilter: "blur(18px)"
 }
 
+const headerGlass = {
+  background: "linear-gradient(135deg, rgba(255,255,255,0.22), rgba(255,255,255,0.06))",
+  backdropFilter: "blur(22px)",
+  WebkitBackdropFilter: "blur(22px)",
+  borderRadius: "1.3rem",
+  border: "1px solid rgba(255,255,255,0.35)",
+  boxShadow: "0 25px 60px rgba(0,0,0,0.4)"
+}
+
+
 // 기본 카드 베이스
 const glassCardBase: React.CSSProperties = {
   backdropFilter: "blur(16px)",
@@ -446,7 +456,7 @@ export default function HomePage() {
         <header style={{ ...containerStyle }}>
           <div
               style={{
-                ...glassPanel,
+                ...headerGlass,
                 padding: "1.6rem 1.8rem",
                 display: "flex",
                 flexDirection: "column",
@@ -465,9 +475,12 @@ export default function HomePage() {
               <div>
                 <h1
                     style={{
-                      fontSize: "1.9rem",
+                      fontSize: "2rem",
                       fontWeight: 700,
-                      letterSpacing: "-0.03em"
+                      letterSpacing: "-0.03em",
+                      background: "linear-gradient(to right, #3b82f6, #9333ea)",
+                      WebkitBackgroundClip: "text",
+                      color: "transparent"
                     }}
                 >
                   월별 사용 통계 대시보드
@@ -480,7 +493,7 @@ export default function HomePage() {
                     }}
                 >
                   A열: Month, B~E열: Menu1~4 HIT, F열: UniqueUsers, G열: TotalHits
-                  구조의 Excel(.xlsx)을 업로드하면 자동으로 통계가 시각화됩니다.
+                  구조의 Excel(.xlsx, .csv)을 업로드하면 자동으로 통계가 시각화됩니다.
                 </p>
               </div>
 
@@ -532,7 +545,7 @@ export default function HomePage() {
                 <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".xlsx"
+                    accept=".xlsx, .csv"
                     onChange={handleFileChange}
                     style={{ display: "none" }}
                 />
