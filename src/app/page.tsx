@@ -39,7 +39,6 @@ function toNumber(value: any): number {
   return isNaN(n) ? 0 : n
 }
 
-// 엑셀에서 뽑아낸 데이터 구조 타입
 interface ChartData {
   months: string[]
   menu1: number[]
@@ -48,9 +47,16 @@ interface ChartData {
   menu4: number[]
   uniqueUsers: number[]
   totalHits: number[]
+  // 🔹 추가: 엑셀 헤더에서 읽어올 메뉴 이름
+  menuLabels: {
+    menu1: string
+    menu2: string
+    menu3: string
+    menu4: string
+  }
 }
 
-// ========= 공통 스타일 (글래스 대시보드) ==========
+
 // ========= 공통 스타일 (글래스 대시보드) ==========
 const pageStyle: React.CSSProperties = {
   minHeight: "100vh",
@@ -177,11 +183,10 @@ export default function HomePage() {
       const firstRow = rows[0]
       const firstCell = firstRow[0]
       const looksLikeHeader =
-          typeof firstCell === "string" && firstCell.toLowerCase().includes("month")
+          typeof firstCell === "string" &&
+          firstCell.toLowerCase().includes("month")
 
-      const dataRows = looksLikeHeader ? rows.slice(1) : rows
-
-      // A~G 열 인덱스 고정
+// A~G 열 인덱스 고정
       const colMonth = 0
       const colMenu1 = 1
       const colMenu2 = 2
@@ -189,6 +194,29 @@ export default function HomePage() {
       const colMenu4 = 4
       const colUser = 5
       const colTotal = 6
+
+// 🔹 기본 메뉴 이름 (헤더가 없을 때 fallback)
+      let menu1Label = "Menu1"
+      let menu2Label = "Menu2"
+      let menu3Label = "Menu3"
+      let menu4Label = "Menu4"
+
+// 🔹 헤더가 있으면 B~E열의 텍스트를 메뉴 이름으로 사용
+      if (looksLikeHeader) {
+        const h1 = firstRow[colMenu1]
+        const h2 = firstRow[colMenu2]
+        const h3 = firstRow[colMenu3]
+        const h4 = firstRow[colMenu4]
+
+        if (typeof h1 === "string" && h1.trim()) menu1Label = h1.trim()
+        if (typeof h2 === "string" && h2.trim()) menu2Label = h2.trim()
+        if (typeof h3 === "string" && h3.trim()) menu3Label = h3.trim()
+        if (typeof h4 === "string" && h4.trim()) menu4Label = h4.trim()
+      }
+
+// 🔹 데이터 행은 헤더를 제외하고 사용
+      const dataRows = looksLikeHeader ? rows.slice(1) : rows
+
 
       const months: string[] = []
       const menu1: number[] = []
@@ -226,7 +254,13 @@ export default function HomePage() {
         menu3,
         menu4,
         uniqueUsers,
-        totalHits
+        totalHits,
+        menuLabels: {
+          menu1: menu1Label,
+          menu2: menu2Label,
+          menu3: menu3Label,
+          menu4: menu4Label
+        }
       })
     } catch (err) {
       console.error(err)
@@ -349,7 +383,7 @@ export default function HomePage() {
   const getMenuChartOption = () => {
     if (!chartData) return {}
 
-    const { months, menu1, menu2, menu3, menu4 } = chartData
+    const { months, menu1, menu2, menu3, menu4, menuLabels } = chartData
 
     return {
       textStyle: {
@@ -367,7 +401,12 @@ export default function HomePage() {
         textStyle: { color: "#e2e8f0" }
       },
       legend: {
-        data: ["Menu1", "Menu2", "Menu3", "Menu4"],
+        data: [
+          menuLabels.menu1,
+          menuLabels.menu2,
+          menuLabels.menu3,
+          menuLabels.menu4
+        ],
         textStyle: { color: "#e2e8f0" }
       },
       grid: {
@@ -391,10 +430,30 @@ export default function HomePage() {
         splitLine: { lineStyle: { color: "#334155" } }
       },
       series: [
-        { name: "Menu1", type: "line", smooth: true, data: menu1 },
-        { name: "Menu2", type: "line", smooth: true, data: menu2 },
-        { name: "Menu3", type: "line", smooth: true, data: menu3 },
-        { name: "Menu4", type: "line", smooth: true, data: menu4 }
+        {
+          name: menuLabels.menu1,
+          type: "line",
+          smooth: true,
+          data: menu1
+        },
+        {
+          name: menuLabels.menu2,
+          type: "line",
+          smooth: true,
+          data: menu2
+        },
+        {
+          name: menuLabels.menu3,
+          type: "line",
+          smooth: true,
+          data: menu3
+        },
+        {
+          name: menuLabels.menu4,
+          type: "line",
+          smooth: true,
+          data: menu4
+        }
       ]
     }
   }
@@ -614,6 +673,10 @@ export default function HomePage() {
         {/* ===== KPI 카드 영역 (글래스 카드) ===== */}
         {chartData && kpi && (
             <section style={containerStyle}>
+              {(() => {
+                const labels = chartData.menuLabels
+
+                return (
               <div
                   style={{
                     display: "grid",
@@ -766,7 +829,7 @@ export default function HomePage() {
                       {/* 6. Menu1 연도별 */}
                       <div style={kpiCardBlue}>
                         <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                          {kpi.latestYearStat.year}년 Menu1 HIT
+                          {kpi.latestYearStat.year}년 {labels.menu1} HIT
                         </div>
                         <div
                             style={{
@@ -793,7 +856,7 @@ export default function HomePage() {
                       {/* 7. Menu2 연도별 */}
                       <div style={kpiCardGreen}>
                         <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                          {kpi.latestYearStat.year}년 Menu2 HIT
+                          {kpi.latestYearStat.year}년 {labels.menu2} HIT
                         </div>
                         <div
                             style={{
@@ -820,7 +883,7 @@ export default function HomePage() {
                       {/* 8. Menu3 연도별 */}
                       <div style={kpiCardAmber}>
                         <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                          {kpi.latestYearStat.year}년 Menu3 HIT
+                          {kpi.latestYearStat.year}년 {labels.menu3} HIT
                         </div>
                         <div
                             style={{
@@ -847,7 +910,7 @@ export default function HomePage() {
                       {/* 9. Menu4 연도별 */}
                       <div style={kpiCardPink}>
                         <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                          {kpi.latestYearStat.year}년 Menu4 HIT
+                          {kpi.latestYearStat.year}년 {labels.menu4} HIT
                         </div>
                         <div
                             style={{
@@ -927,6 +990,8 @@ export default function HomePage() {
                     </>
                 )}
               </div>
+                )
+              })()}
             </section>
         )}
       </main>
