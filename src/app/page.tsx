@@ -51,6 +51,7 @@ interface ChartData {
 }
 
 // ========= 공통 스타일 (글래스 대시보드) ==========
+// ========= 공통 스타일 (글래스 대시보드) ==========
 const pageStyle: React.CSSProperties = {
   minHeight: "100vh",
   padding: "2.5rem 1.5rem",
@@ -76,33 +77,59 @@ const glassPanel: React.CSSProperties = {
   WebkitBackdropFilter: "blur(18px)"
 }
 
+// 기본 카드 베이스
 const glassCardBase: React.CSSProperties = {
-  background: "rgba(15, 23, 42, 0.7)",
   backdropFilter: "blur(16px)",
   WebkitBackdropFilter: "blur(16px)",
   borderRadius: "1rem",
-  border: "1px solid rgba(148,163,184,0.45)",
   padding: "1.1rem 1.3rem",
-  color: "#f8fafc",
-  boxShadow: "0 18px 40px rgba(15,23,42,0.8)"
+  color: "#0f172a",
+  boxShadow: "0 18px 40px rgba(15,23,42,0.7)",
 }
 
-// 카드별 상단 색 포인트
-const accentBlue: React.CSSProperties = {
-  borderTop: "3px solid rgba(96,165,250,0.85)"
+// 화사한 배경을 입힌 카드들
+const kpiCardBlue: React.CSSProperties = {
+  ...glassCardBase,
+  background: "linear-gradient(135deg, #dbeafe, #e0f2fe)", // 파란 계열
+  border: "1px solid rgba(59,130,246,0.6)"
 }
-const accentGreen: React.CSSProperties = {
-  borderTop: "3px solid rgba(52,211,153,0.85)"
+
+const kpiCardGreen: React.CSSProperties = {
+  ...glassCardBase,
+  background: "linear-gradient(135deg, #dcfce7, #ccfbf1)", // 초록/민트
+  border: "1px solid rgba(34,197,94,0.6)"
 }
-const accentAmber: React.CSSProperties = {
-  borderTop: "3px solid rgba(251,191,36,0.85)"
+
+const kpiCardAmber: React.CSSProperties = {
+  ...glassCardBase,
+  background: "linear-gradient(135deg, #fef9c3, #ffedd5)", // 노랑/오렌지
+  border: "1px solid rgba(245,158,11,0.6)"
 }
-const accentSky: React.CSSProperties = {
-  borderTop: "3px solid rgba(56,189,248,0.85)"
+
+const kpiCardPink: React.CSSProperties = {
+  ...glassCardBase,
+  background: "linear-gradient(135deg, #ffe4e6, #fef2f2)", // 핑크
+  border: "1px solid rgba(244,63,94,0.6)"
 }
-const accentViolet: React.CSSProperties = {
-  borderTop: "3px solid rgba(129,140,248,0.9)"
+
+const kpiCardIndigo: React.CSSProperties = {
+  ...glassCardBase,
+  background: "linear-gradient(135deg, #e0e7ff, #eef2ff)", // 남색계열
+  border: "1px solid rgba(79,70,229,0.6)"
 }
+
+const kpiCardCyan: React.CSSProperties = {
+  ...glassCardBase,
+  background: "linear-gradient(135deg, #cffafe, #e0f2fe)", // 청록
+  border: "1px solid rgba(8,145,178,0.6)"
+}
+
+const kpiCardSlate: React.CSSProperties = {
+  ...glassCardBase,
+  background: "linear-gradient(135deg, #e5e7eb, #f9fafb)", // 중립
+  border: "1px solid rgba(148,163,184,0.6)"
+}
+
 
 export default function HomePage() {
   const [chartData, setChartData] = useState<ChartData | null>(null)
@@ -197,22 +224,34 @@ export default function HomePage() {
     }
   }
 
-  // 간단 KPI + 연도별 평균 계산
   const kpi = useMemo(() => {
     if (!chartData) return null
 
     const { months, totalHits, uniqueUsers, menu1, menu2, menu3, menu4 } = chartData
 
-    // 전체 구간 KPI
+    // 전체 구간 KPI (합계 + 전체 월평균)
     const totalHitSum = totalHits.reduce((a, b) => a + b, 0)
     const totalUserSum = uniqueUsers.reduce((a, b) => a + b, 0)
-    const avgHits =
-        totalHits.length > 0 ? Math.round(totalHitSum / totalHits.length) : 0
-    const latestIndex = months.length - 1
+    const totalMenu1Sum = menu1.reduce((a, b) => a + b, 0)
+    const totalMenu2Sum = menu2.reduce((a, b) => a + b, 0)
+    const totalMenu3Sum = menu3.reduce((a, b) => a + b, 0)
+    const totalMenu4Sum = menu4.reduce((a, b) => a + b, 0)
+    const totalMenuAllSum = totalMenu1Sum + totalMenu2Sum + totalMenu3Sum + totalMenu4Sum
 
-    // 연도별 집계
+    const monthCount = months.length
+
+    const totalHitAvg = monthCount ? Math.round(totalHitSum / monthCount) : 0
+    const totalUserAvg = monthCount ? Math.round(totalUserSum / monthCount) : 0
+    const totalMenuAllAvg = monthCount ? Math.round(totalMenuAllSum / monthCount) : 0
+
+    const latestIndex = monthCount - 1
+
+    // 🔹 연도별 집계 (합계 기준, 나중에 연평균으로 나눔)
     type YearAgg = {
-      menuSum: number
+      menu1Sum: number
+      menu2Sum: number
+      menu3Sum: number
+      menu4Sum: number
       userSum: number
       hitSum: number
       count: number
@@ -225,28 +264,53 @@ export default function HomePage() {
       if (!year) return
 
       if (!yearlyMap[year]) {
-        yearlyMap[year] = { menuSum: 0, userSum: 0, hitSum: 0, count: 0 }
+        yearlyMap[year] = {
+          menu1Sum: 0,
+          menu2Sum: 0,
+          menu3Sum: 0,
+          menu4Sum: 0,
+          userSum: 0,
+          hitSum: 0,
+          count: 0
+        }
       }
 
-      const menuTotal =
-          (menu1[idx] ?? 0) +
-          (menu2[idx] ?? 0) +
-          (menu3[idx] ?? 0) +
-          (menu4[idx] ?? 0)
-
-      yearlyMap[year].menuSum += menuTotal
+      yearlyMap[year].menu1Sum += menu1[idx] ?? 0
+      yearlyMap[year].menu2Sum += menu2[idx] ?? 0
+      yearlyMap[year].menu3Sum += menu3[idx] ?? 0
+      yearlyMap[year].menu4Sum += menu4[idx] ?? 0
       yearlyMap[year].userSum += uniqueUsers[idx] ?? 0
       yearlyMap[year].hitSum += totalHits[idx] ?? 0
       yearlyMap[year].count += 1
     })
 
     const yearlyStats = Object.entries(yearlyMap).map(
-        ([year, { menuSum, userSum, hitSum, count }]) => ({
-          year,
-          menuAvg: count > 0 ? Math.round(menuSum / count) : 0,
-          userAvg: count > 0 ? Math.round(userSum / count) : 0,
-          hitAvg: count > 0 ? Math.round(hitSum / count) : 0
-        })
+        ([
+           year,
+           { menu1Sum, menu2Sum, menu3Sum, menu4Sum, userSum, hitSum, count }
+         ]) => {
+          const menuAllSum = menu1Sum + menu2Sum + menu3Sum + menu4Sum
+          const safeDiv = (sum: number) => (count > 0 ? Math.round(sum / count) : 0)
+
+          return {
+            year,
+            count,
+            menu1Sum,
+            menu2Sum,
+            menu3Sum,
+            menu4Sum,
+            menuAllSum,
+            userSum,
+            hitSum,
+            menu1Avg: safeDiv(menu1Sum),
+            menu2Avg: safeDiv(menu2Sum),
+            menu3Avg: safeDiv(menu3Sum),
+            menu4Avg: safeDiv(menu4Sum),
+            menuAllAvg: safeDiv(menuAllSum),
+            userAvg: safeDiv(userSum),
+            hitAvg: safeDiv(hitSum)
+          }
+        }
     )
 
     const latestYearStat =
@@ -257,13 +321,20 @@ export default function HomePage() {
             : null
 
     return {
+      // 전체 기간 값들
       totalHitSum,
       totalUserSum,
-      avgHits,
+      totalMenuAllSum,
+      totalHitAvg,
+      totalUserAvg,
+      totalMenuAllAvg,
       latestMonth: months[latestIndex] ?? "-",
+
+      // 가장 최근 연도 연평균/합계
       latestYearStat
     }
   }, [chartData])
+
 
   const getMenuChartOption = () => {
     if (!chartData) return {}
@@ -498,145 +569,311 @@ export default function HomePage() {
               <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
                     gap: "1rem"
                   }}
               >
-                {/* 1. 전체 기간 Total Hits */}
-                <div style={{ ...glassCardBase, ...accentBlue }}>
-                  <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                    전체 기간 Total Hits
-                  </div>
+                {/* 1. 전체 기간 Total Hits (합계 / 월평균) */}
+                <div style={kpiCardBlue}>
+                  <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>전체 기간 Total Hits</div>
                   <div
                       style={{
-                        fontSize: "1.6rem",
+                        fontSize: "1.4rem",
                         fontWeight: 700,
-                        marginTop: "0.35rem",
+                        marginTop: "0.3rem",
                         letterSpacing: "-0.03em"
                       }}
                   >
                     {kpi.totalHitSum.toLocaleString()}
                   </div>
+                  <div
+                      style={{
+                        fontSize: "0.85rem",
+                        marginTop: "0.3rem",
+                        opacity: 0.8
+                      }}
+                  >
+                    월평균:{" "}
+                    <strong>{kpi.totalHitAvg.toLocaleString()}</strong>
+                  </div>
                 </div>
 
-                {/* 2. 전체 기간 Unique Users 합계 */}
-                <div style={{ ...glassCardBase, ...accentGreen }}>
+                {/* 2. 전체 기간 Unique Users (합계 / 월평균) */}
+                <div style={kpiCardGreen}>
                   <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                    전체 기간 Unique Users 합계
+                    전체 기간 Unique Users
                   </div>
                   <div
                       style={{
-                        fontSize: "1.6rem",
+                        fontSize: "1.4rem",
                         fontWeight: 700,
-                        marginTop: "0.35rem",
+                        marginTop: "0.3rem",
                         letterSpacing: "-0.03em"
                       }}
                   >
                     {kpi.totalUserSum.toLocaleString()}
                   </div>
+                  <div
+                      style={{
+                        fontSize: "0.85rem",
+                        marginTop: "0.3rem",
+                        opacity: 0.8
+                      }}
+                  >
+                    월평균:{" "}
+                    <strong>{kpi.totalUserAvg.toLocaleString()}</strong>
+                  </div>
                 </div>
 
-                {/* 3. 전체 기간 월 평균 Total Hits */}
-                <div style={{ ...glassCardBase, ...accentSky }}>
+                {/* 3. 전체 기간 메뉴 HIT (1~4 합산 합계 / 월평균) */}
+                <div style={kpiCardAmber}>
                   <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                    전체 기간 월 평균 Total Hits
+                    전체 기간 메뉴 HIT (Menu1~4 합산)
                   </div>
                   <div
                       style={{
-                        fontSize: "1.6rem",
+                        fontSize: "1.4rem",
                         fontWeight: 700,
-                        marginTop: "0.35rem",
+                        marginTop: "0.3rem",
                         letterSpacing: "-0.03em"
                       }}
                   >
-                    {kpi.avgHits.toLocaleString()}
+                    {kpi.totalMenuAllSum.toLocaleString()}
                   </div>
                   <div
                       style={{
-                        fontSize: "0.8rem",
-                        opacity: 0.7,
-                        marginTop: "0.25rem"
+                        fontSize: "0.85rem",
+                        marginTop: "0.3rem",
+                        opacity: 0.8
                       }}
                   >
-                    기준 월 수: {chartData.totalHits.length}
+                    월평균:{" "}
+                    <strong>{kpi.totalMenuAllAvg.toLocaleString()}</strong>
                   </div>
                 </div>
 
                 {/* 4. 가장 최근 월 */}
-                <div style={{ ...glassCardBase, ...accentViolet }}>
+                <div style={kpiCardIndigo}>
                   <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>가장 최근 월</div>
                   <div
                       style={{
-                        fontSize: "1.6rem",
+                        fontSize: "1.4rem",
                         fontWeight: 700,
-                        marginTop: "0.35rem",
+                        marginTop: "0.3rem",
                         letterSpacing: "-0.03em"
                       }}
                   >
                     {kpi.latestMonth}
                   </div>
+                  <div
+                      style={{
+                        fontSize: "0.8rem",
+                        marginTop: "0.3rem",
+                        opacity: 0.75
+                      }}
+                  >
+                    업로드된 데이터 기준
+                  </div>
                 </div>
 
-                {/* 5~7. 최신 연도 기준 연평균 카드 */}
+                {/* 🔹 5~? 최신 연도 기준 연평균 카드들 */}
                 {kpi.latestYearStat && (
                     <>
-                      {/* 최신 연도 메뉴 HIT 연평균 */}
-                      <div style={{ ...glassCardBase, ...accentAmber }}>
+                      {/* 5. 최신 연도 메뉴 전체 (1~4 합산) */}
+                      <div style={kpiCardSlate}>
                         <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                          {kpi.latestYearStat.year}년 메뉴 HIT 연평균
+                          {kpi.latestYearStat.year}년 메뉴 HIT (전체)
                         </div>
                         <div
                             style={{
-                              fontSize: "1.6rem",
-                              fontWeight: 700,
+                              fontSize: "1.05rem",
                               marginTop: "0.35rem",
-                              letterSpacing: "-0.03em"
+                              fontWeight: 600
                             }}
                         >
-                          {kpi.latestYearStat.menuAvg.toLocaleString()}
+                          전체:{" "}
+                          <strong>{kpi.latestYearStat.menuAllSum.toLocaleString()}</strong>
                         </div>
                         <div
                             style={{
-                              fontSize: "0.78rem",
-                              opacity: 0.7,
-                              marginTop: "0.25rem"
+                              fontSize: "0.9rem",
+                              marginTop: "0.25rem",
+                              opacity: 0.85
+                            }}
+                        >
+                          연평균:{" "}
+                          <strong>{kpi.latestYearStat.menuAllAvg.toLocaleString()}</strong>
+                        </div>
+                        <div
+                            style={{
+                              fontSize: "0.75rem",
+                              marginTop: "0.25rem",
+                              opacity: 0.65
                             }}
                         >
                           (Menu1~4 합산 기준)
                         </div>
                       </div>
 
-                      {/* 최신 연도 고유 접속자 연평균 */}
-                      <div style={{ ...glassCardBase, ...accentGreen }}>
+                      {/* 6. Menu1 연도별 */}
+                      <div style={kpiCardBlue}>
                         <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                          {kpi.latestYearStat.year}년 고유 접속자 연평균
+                          {kpi.latestYearStat.year}년 Menu1 HIT
                         </div>
                         <div
                             style={{
-                              fontSize: "1.6rem",
-                              fontWeight: 700,
+                              fontSize: "1.05rem",
                               marginTop: "0.35rem",
-                              letterSpacing: "-0.03em"
+                              fontWeight: 600
                             }}
                         >
-                          {kpi.latestYearStat.userAvg.toLocaleString()}
+                          전체:{" "}
+                          <strong>{kpi.latestYearStat.menu1Sum.toLocaleString()}</strong>
+                        </div>
+                        <div
+                            style={{
+                              fontSize: "0.9rem",
+                              marginTop: "0.25rem",
+                              opacity: 0.85
+                            }}
+                        >
+                          연평균:{" "}
+                          <strong>{kpi.latestYearStat.menu1Avg.toLocaleString()}</strong>
                         </div>
                       </div>
 
-                      {/* 최신 연도 Total Hits 연평균 */}
-                      <div style={{ ...glassCardBase, ...accentBlue }}>
+                      {/* 7. Menu2 연도별 */}
+                      <div style={kpiCardGreen}>
                         <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                          {kpi.latestYearStat.year}년 Total Hits 연평균
+                          {kpi.latestYearStat.year}년 Menu2 HIT
                         </div>
                         <div
                             style={{
-                              fontSize: "1.6rem",
-                              fontWeight: 700,
+                              fontSize: "1.05rem",
                               marginTop: "0.35rem",
-                              letterSpacing: "-0.03em"
+                              fontWeight: 600
                             }}
                         >
-                          {kpi.latestYearStat.hitAvg.toLocaleString()}
+                          전체:{" "}
+                          <strong>{kpi.latestYearStat.menu2Sum.toLocaleString()}</strong>
+                        </div>
+                        <div
+                            style={{
+                              fontSize: "0.9rem",
+                              marginTop: "0.25rem",
+                              opacity: 0.85
+                            }}
+                        >
+                          연평균:{" "}
+                          <strong>{kpi.latestYearStat.menu2Avg.toLocaleString()}</strong>
+                        </div>
+                      </div>
+
+                      {/* 8. Menu3 연도별 */}
+                      <div style={kpiCardAmber}>
+                        <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
+                          {kpi.latestYearStat.year}년 Menu3 HIT
+                        </div>
+                        <div
+                            style={{
+                              fontSize: "1.05rem",
+                              marginTop: "0.35rem",
+                              fontWeight: 600
+                            }}
+                        >
+                          전체:{" "}
+                          <strong>{kpi.latestYearStat.menu3Sum.toLocaleString()}</strong>
+                        </div>
+                        <div
+                            style={{
+                              fontSize: "0.9rem",
+                              marginTop: "0.25rem",
+                              opacity: 0.85
+                            }}
+                        >
+                          연평균:{" "}
+                          <strong>{kpi.latestYearStat.menu3Avg.toLocaleString()}</strong>
+                        </div>
+                      </div>
+
+                      {/* 9. Menu4 연도별 */}
+                      <div style={kpiCardPink}>
+                        <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
+                          {kpi.latestYearStat.year}년 Menu4 HIT
+                        </div>
+                        <div
+                            style={{
+                              fontSize: "1.05rem",
+                              marginTop: "0.35rem",
+                              fontWeight: 600
+                            }}
+                        >
+                          전체:{" "}
+                          <strong>{kpi.latestYearStat.menu4Sum.toLocaleString()}</strong>
+                        </div>
+                        <div
+                            style={{
+                              fontSize: "0.9rem",
+                              marginTop: "0.25rem",
+                              opacity: 0.85
+                            }}
+                        >
+                          연평균:{" "}
+                          <strong>{kpi.latestYearStat.menu4Avg.toLocaleString()}</strong>
+                        </div>
+                      </div>
+
+                      {/* 10. 최신 연도 고유 접속자 */}
+                      <div style={kpiCardCyan}>
+                        <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
+                          {kpi.latestYearStat.year}년 Unique Users
+                        </div>
+                        <div
+                            style={{
+                              fontSize: "1.05rem",
+                              marginTop: "0.35rem",
+                              fontWeight: 600
+                            }}
+                        >
+                          전체:{" "}
+                          <strong>{kpi.latestYearStat.userSum.toLocaleString()}</strong>
+                        </div>
+                        <div
+                            style={{
+                              fontSize: "0.9rem",
+                              marginTop: "0.25rem",
+                              opacity: 0.85
+                            }}
+                        >
+                          연평균:{" "}
+                          <strong>{kpi.latestYearStat.userAvg.toLocaleString()}</strong>
+                        </div>
+                      </div>
+
+                      {/* 11. 최신 연도 Total Hits */}
+                      <div style={kpiCardIndigo}>
+                        <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
+                          {kpi.latestYearStat.year}년 Total Hits
+                        </div>
+                        <div
+                            style={{
+                              fontSize: "1.05rem",
+                              marginTop: "0.35rem",
+                              fontWeight: 600
+                            }}
+                        >
+                          전체:{" "}
+                          <strong>{kpi.latestYearStat.hitSum.toLocaleString()}</strong>
+                        </div>
+                        <div
+                            style={{
+                              fontSize: "0.9rem",
+                              marginTop: "0.25rem",
+                              opacity: 0.85
+                            }}
+                        >
+                          연평균:{" "}
+                          <strong>{kpi.latestYearStat.hitAvg.toLocaleString()}</strong>
                         </div>
                       </div>
                     </>
@@ -644,6 +881,7 @@ export default function HomePage() {
               </div>
             </section>
         )}
+
 
         {/* ===== 차트 영역 (글래스 패널) ===== */}
         {chartData && (
