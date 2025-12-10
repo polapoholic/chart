@@ -1,33 +1,46 @@
 "use client"
 
-import { useState, useMemo, useRef, useEffect, type ChangeEvent } from "react"
+import { useState, useRef, useMemo, useEffect, type ChangeEvent } from "react"
 import * as XLSX from "xlsx"
 import dynamic from "next/dynamic"
 
-// ECharts 컴포넌트는 브라우저에서만 렌더링되게 dynamic import
+// 브라우저에서만 ECharts 렌더링
 const ReactECharts = dynamic(() => import("echarts-for-react"), {
   ssr: false
 })
 
-// ========= 유틸 함수들 ==========
-function normalizeMonth(value: any): string {
-  if (value == null || value === "") return ""
+type DailyRow = {
+  date: string
+  users: number
+}
 
-  // 엑셀이 날짜형으로 저장한 경우(Date 객체로 들어옴)
+type Dataset = {
+  id: string
+  fileName: string
+  rows: DailyRow[]
+}
+
+type ViewMode = "daily"
+
+function normalizeDate(value: any): string {
+  if (!value) return ""
+
   if (value instanceof Date) {
     const y = value.getFullYear()
     const m = String(value.getMonth() + 1).padStart(2, "0")
-    return `${y}-${m}`
+    const d = String(value.getDate()).padStart(2, "0")
+    return `${y}-${m}-${d}`
   }
 
-  const raw = String(value).toLowerCase().trim()
+  const raw = String(value).trim()
 
-  // 이미 yyyy-mm 또는 yyyy-mm-dd 형태면 앞 7자리만 사용
-  if (/^\d{4}-\d{2}(-\d{2})?$/.test(raw)) {
-    return raw.slice(0, 7)
-  }
+  // yyyy-mm-dd 형태면 그대로 사용
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
 
-  // 못 알아먹으면 원본 반환 (최소한 라벨은 보이게)
+  // yyyy.mm.dd / yyyy/mm/dd 같은 것도 대충 맞춰줌
+  const replaced = raw.replace(/[./]/g, "-")
+  if (/^\d{4}-\d{2}-\d{2}$/.test(replaced)) return replaced
+
   return raw
 }
 
@@ -39,28 +52,8 @@ function toNumber(value: any): number {
   return isNaN(n) ? 0 : n
 }
 
-interface ChartData {
-  months: string[]
-  menu1: number[]
-  menu2: number[]
-  menu3: number[]
-  menu4: number[]
-  uniqueUsers: number[]
-  totalHits: number[]
-  // 🔹 추가: 엑셀 헤더에서 읽어올 메뉴 이름
-  menuLabels: {
-    menu1: string
-    menu2: string
-    menu3: string
-    menu4: string
-  }
-}
+// ─── 스타일 공통 ─────────────────────────────────────────
 
-// ========= localStorage 키 ==========
-const STORAGE_KEY_CHART = "chart-dashboard:chartData"
-const STORAGE_KEY_FILENAME = "chart-dashboard:fileName"
-
-// ========= 공통 스타일 (글래스 대시보드) ==========
 const pageStyle: React.CSSProperties = {
   minHeight: "100vh",
   padding: "2.5rem 1.5rem",
@@ -77,16 +70,7 @@ const containerStyle: React.CSSProperties = {
   width: "100%"
 }
 
-const glassPanel: React.CSSProperties = {
-  background: "rgba(15, 23, 42, 0.6)",
-  boxShadow: "0 24px 60px rgba(0,0,0,0.7)",
-  borderRadius: "1.2rem",
-  border: "1px solid rgba(148, 163, 184, 0.35)",
-  backdropFilter: "blur(18px)",
-  WebkitBackdropFilter: "blur(18px)"
-}
-
-const headerGlass = {
+const headerGlass: React.CSSProperties = {
   background: "linear-gradient(135deg, rgba(255,255,255,0.22), rgba(255,255,255,0.06))",
   backdropFilter: "blur(22px)",
   WebkitBackdropFilter: "blur(22px)",
@@ -95,110 +79,50 @@ const headerGlass = {
   boxShadow: "0 25px 60px rgba(0,0,0,0.4)"
 }
 
-// 기본 카드 베이스
-const glassCardBase: React.CSSProperties = {
-  backdropFilter: "blur(16px)",
-  WebkitBackdropFilter: "blur(16px)",
-  borderRadius: "1rem",
-  padding: "1.1rem 1.3rem",
-  color: "#0f172a",
-  boxShadow: "0 18px 40px rgba(15,23,42,0.7)"
+const chartCard: React.CSSProperties = {
+  background: "rgba(15, 23, 42, 0.7)",
+  boxShadow: "0 24px 60px rgba(0,0,0,0.7)",
+  borderRadius: "1.2rem",
+  border: "1px solid rgba(148, 163, 184, 0.35)",
+  backdropFilter: "blur(18px)",
+  WebkitBackdropFilter: "blur(18px)",
+  padding: "1.2rem 1.2rem",
+  marginTop: "1.2rem",
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.6rem"
 }
 
-// 화사한 배경을 입힌 카드들
-const kpiCardBlue: React.CSSProperties = {
-  ...glassCardBase,
-  background: "linear-gradient(135deg, #dbeafe, #e0f2fe)", // 파란 계열
-  border: "1px solid rgba(59,130,246,0.6)"
+const chartHeaderRow: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "0.75rem",
+  flexWrap: "wrap"
 }
 
-const kpiCardGreen: React.CSSProperties = {
-  ...glassCardBase,
-  background: "linear-gradient(135deg, #dcfce7, #ccfbf1)", // 초록/민트
-  border: "1px solid rgba(34,197,94,0.6)"
+const pillButton: React.CSSProperties = {
+  padding: "0.35rem 0.9rem",
+  borderRadius: "999px",
+  border: "1px solid rgba(148,163,184,0.7)",
+  background: "rgba(15,23,42,0.95)",
+  fontSize: "0.8rem",
+  cursor: "pointer"
 }
 
-const kpiCardAmber: React.CSSProperties = {
-  ...glassCardBase,
-  background: "linear-gradient(135deg, #fef9c3, #ffedd5)", // 노랑/오렌지
-  border: "1px solid rgba(245,158,11,0.6)"
-}
-
-const kpiCardPink: React.CSSProperties = {
-  ...glassCardBase,
-  background: "linear-gradient(135deg, #ffe4e6, #fef2f2)", // 핑크
-  border: "1px solid rgba(244,63,94,0.6)"
-}
-
-const kpiCardIndigo: React.CSSProperties = {
-  ...glassCardBase,
-  background: "linear-gradient(135deg, #e0e7ff, #eef2ff)", // 남색계열
-  border: "1px solid rgba(79,70,229,0.6)"
-}
-
-const kpiCardCyan: React.CSSProperties = {
-  ...glassCardBase,
-  background: "linear-gradient(135deg, #cffafe, #e0f2fe)", // 청록
-  border: "1px solid rgba(8,145,178,0.6)"
-}
-
-const kpiCardSlate: React.CSSProperties = {
-  ...glassCardBase,
-  background: "linear-gradient(135deg, #e5e7eb, #f9fafb)", // 중립
-  border: "1px solid rgba(148,163,184,0.6)"
-}
+// ─── 메인 컴포넌트 ────────────────────────────────────────
 
 export default function HomePage() {
-  const [chartData, setChartData] = useState<ChartData | null>(null)
-  const [fileName, setFileName] = useState<string | null>(null)
-  const [restored, setRestored] = useState(false)
+  const [datasets, setDatasets] = useState<Dataset[]>([])
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [viewMode, setViewMode] = useState<ViewMode>("daily")
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  // 🔹 마운트 시 localStorage에서 기존 데이터 복원
-  useEffect(() => {
-    try {
-      const saved = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY_CHART) : null
-      const savedFile = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY_FILENAME) : null
-
-      if (saved) {
-        const parsed: ChartData = JSON.parse(saved)
-        setChartData(parsed)
-        if (savedFile) setFileName(savedFile)
-        setRestored(true)
-      }
-    } catch (err) {
-      console.error("차트 데이터 복원 중 오류", err)
-    }
-  }, [])
-
-  // 🔹 chartData, fileName이 바뀔 때 localStorage에 저장
-  useEffect(() => {
-    if (!chartData) {
-      // 차트가 비워졌으면 저장값 삭제
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem(STORAGE_KEY_CHART)
-        window.localStorage.removeItem(STORAGE_KEY_FILENAME)
-      }
-      return
-    }
-
-    try {
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(STORAGE_KEY_CHART, JSON.stringify(chartData))
-        if (fileName) {
-          window.localStorage.setItem(STORAGE_KEY_FILENAME, fileName)
-        }
-      }
-    } catch (err) {
-      console.error("차트 데이터 저장 중 오류", err)
-    }
-  }, [chartData, fileName])
+  // 새로고침해도 유지하고 싶으면 여기서 localStorage 연동하면 됨 (지금은 생략)
 
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-
-    setFileName(file.name)
 
     try {
       const buffer = await file.arrayBuffer()
@@ -207,11 +131,9 @@ export default function HomePage() {
         cellDates: true
       })
 
-      // 시트 하나라고 가정하고 첫 번째 시트를 사용
       const sheetName = workbook.SheetNames[0]
       const worksheet = workbook.Sheets[sheetName]
 
-      // 2차원 배열: [ [헤더], [데이터], ... ]
       const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, {
         header: 1,
         defval: null
@@ -222,218 +144,95 @@ export default function HomePage() {
         return
       }
 
-      const firstRow = rows[0]
-      const firstCell = firstRow[0]
+      const headerRow = rows[0]
+      const firstCell = headerRow?.[0]
       const looksLikeHeader =
           typeof firstCell === "string" &&
-          firstCell.toLowerCase().includes("month")
+          firstCell.toLowerCase().includes("date")
 
-      // A~G 열 인덱스 고정
-      const colMonth = 0
-      const colMenu1 = 1
-      const colMenu2 = 2
-      const colMenu3 = 3
-      const colMenu4 = 4
-      const colUser = 5
-      const colTotal = 6
+      const colDate = 0
+      const colUsers = 1
 
-      // 🔹 기본 메뉴 이름 (헤더가 없을 때 fallback)
-      let menu1Label = "Menu1"
-      let menu2Label = "Menu2"
-      let menu3Label = "Menu3"
-      let menu4Label = "Menu4"
-
-      // 🔹 헤더가 있으면 B~E열의 텍스트를 메뉴 이름으로 사용
-      if (looksLikeHeader) {
-        const h1 = firstRow[colMenu1]
-        const h2 = firstRow[colMenu2]
-        const h3 = firstRow[colMenu3]
-        const h4 = firstRow[colMenu4]
-
-        if (typeof h1 === "string" && h1.trim()) menu1Label = h1.trim()
-        if (typeof h2 === "string" && h2.trim()) menu2Label = h2.trim()
-        if (typeof h3 === "string" && h3.trim()) menu3Label = h3.trim()
-        if (typeof h4 === "string" && h4.trim()) menu4Label = h4.trim()
-      }
-
-      // 🔹 데이터 행은 헤더를 제외하고 사용
       const dataRows = looksLikeHeader ? rows.slice(1) : rows
 
-      const months: string[] = []
-      const menu1: number[] = []
-      const menu2: number[] = []
-      const menu3: number[] = []
-      const menu4: number[] = []
-      const uniqueUsers: number[] = []
-      const totalHits: number[] = []
+      const parsed: DailyRow[] = []
 
       for (const row of dataRows) {
         if (!row) continue
+        const dateRaw = row[colDate]
+        const dateStr = normalizeDate(dateRaw)
+        if (!dateStr) continue
 
-        const monthRaw = row[colMonth]
-        const monthStr = normalizeMonth(monthRaw)
-        if (!monthStr) continue
-
-        months.push(monthStr)
-        menu1.push(toNumber(row[colMenu1]))
-        menu2.push(toNumber(row[colMenu2]))
-        menu3.push(toNumber(row[colMenu3]))
-        menu4.push(toNumber(row[colMenu4]))
-        uniqueUsers.push(toNumber(row[colUser]))
-        totalHits.push(toNumber(row[colTotal]))
+        const users = toNumber(row[colUsers])
+        parsed.push({ date: dateStr, users })
       }
 
-      if (!months.length) {
-        alert("월 데이터가 하나도 파싱되지 않았습니다.")
+      if (!parsed.length) {
+        alert("유효한 일간 사용자 데이터가 없습니다.")
         return
       }
 
-      setChartData({
-        months,
-        menu1,
-        menu2,
-        menu3,
-        menu4,
-        uniqueUsers,
-        totalHits,
-        menuLabels: {
-          menu1: menu1Label,
-          menu2: menu2Label,
-          menu3: menu3Label,
-          menu4: menu4Label
-        }
-      })
-      setRestored(false)
+      // 날짜 오름차순 정렬
+      parsed.sort((a, b) => a.date.localeCompare(b.date))
+
+      const newDataset: Dataset = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        fileName: file.name,
+        rows: parsed
+      }
+
+      setDatasets(prev => [...prev, newDataset])
+      setCollapsed(prev => ({ ...prev, [newDataset.id]: false }))
     } catch (err) {
       console.error(err)
       alert("엑셀 파일을 읽는 중 오류가 발생했습니다.")
-    }
-  }
-
-  const kpi = useMemo(() => {
-    if (!chartData) return null
-
-    const { months, totalHits, uniqueUsers, menu1, menu2, menu3, menu4 } = chartData
-
-    // 전체 구간 KPI (합계 + 전체 월평균)
-    const totalHitSum = totalHits.reduce((a, b) => a + b, 0)
-    const totalUserSum = uniqueUsers.reduce((a, b) => a + b, 0)
-    const totalMenu1Sum = menu1.reduce((a, b) => a + b, 0)
-    const totalMenu2Sum = menu2.reduce((a, b) => a + b, 0)
-    const totalMenu3Sum = menu3.reduce((a, b) => a + b, 0)
-    const totalMenu4Sum = menu4.reduce((a, b) => a + b, 0)
-    const totalMenuAllSum = totalMenu1Sum + totalMenu2Sum + totalMenu3Sum + totalMenu4Sum
-
-    const monthCount = months.length
-
-    const totalHitAvg = monthCount ? Math.round(totalHitSum / monthCount) : 0
-    const totalUserAvg = monthCount ? Math.round(totalUserSum / monthCount) : 0
-    const totalMenuAllAvg = monthCount ? Math.round(totalMenuAllSum / monthCount) : 0
-
-    const latestIndex = monthCount - 1
-
-    // 🔹 연도별 집계 (합계 기준, 나중에 연평균으로 나눔)
-    type YearAgg = {
-      menu1Sum: number
-      menu2Sum: number
-      menu3Sum: number
-      menu4Sum: number
-      userSum: number
-      hitSum: number
-      count: number
-    }
-
-    const yearlyMap: Record<string, YearAgg> = {}
-
-    months.forEach((m, idx) => {
-      const [year] = m.split("-")
-      if (!year) return
-
-      if (!yearlyMap[year]) {
-        yearlyMap[year] = {
-          menu1Sum: 0,
-          menu2Sum: 0,
-          menu3Sum: 0,
-          menu4Sum: 0,
-          userSum: 0,
-          hitSum: 0,
-          count: 0
-        }
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
       }
-
-      yearlyMap[year].menu1Sum += menu1[idx] ?? 0
-      yearlyMap[year].menu2Sum += menu2[idx] ?? 0
-      yearlyMap[year].menu3Sum += menu3[idx] ?? 0
-      yearlyMap[year].menu4Sum += menu4[idx] ?? 0
-      yearlyMap[year].userSum += uniqueUsers[idx] ?? 0
-      yearlyMap[year].hitSum += totalHits[idx] ?? 0
-      yearlyMap[year].count += 1
-    })
-
-    const yearlyStats = Object.entries(yearlyMap).map(
-        ([
-           year,
-           { menu1Sum, menu2Sum, menu3Sum, menu4Sum, userSum, hitSum, count }
-         ]) => {
-          const menuAllSum = menu1Sum + menu2Sum + menu3Sum + menu4Sum
-          const safeDiv = (sum: number) => (count > 0 ? Math.round(sum / count) : 0)
-
-          return {
-            year,
-            count,
-            menu1Sum,
-            menu2Sum,
-            menu3Sum,
-            menu4Sum,
-            menuAllSum,
-            userSum,
-            hitSum,
-            menu1Avg: safeDiv(menu1Sum),
-            menu2Avg: safeDiv(menu2Sum),
-            menu3Avg: safeDiv(menu3Sum),
-            menu4Avg: safeDiv(menu4Sum),
-            menuAllAvg: safeDiv(menuAllSum),
-            userAvg: safeDiv(userSum),
-            hitAvg: safeDiv(hitSum)
-          }
-        }
-    )
-
-    const latestYearStat =
-        yearlyStats.length > 0
-            ? [...yearlyStats]
-                .sort((a, b) => a.year.localeCompare(b.year))
-                .slice(-1)[0]
-            : null
-
-    return {
-      // 전체 기간 값들
-      totalHitSum,
-      totalUserSum,
-      totalMenuAllSum,
-      totalHitAvg,
-      totalUserAvg,
-      totalMenuAllAvg,
-      latestMonth: months[latestIndex] ?? "-",
-
-      // 가장 최근 연도 연평균/합계
-      latestYearStat
     }
-  }, [chartData])
+  }
 
-  const getMenuChartOption = () => {
-    if (!chartData) return {}
+  const statsByDataset = useMemo(() => {
+    return datasets.map(ds => {
+      const usersArr = ds.rows.map(r => r.users)
+      const sum = usersArr.reduce((a, b) => a + b, 0)
+      const avg = usersArr.length ? Math.round(sum / usersArr.length) : 0
+      const max = usersArr.length ? Math.max(...usersArr) : 0
+      const min = usersArr.length ? Math.min(...usersArr) : 0
+      const startDate = ds.rows[0]?.date ?? "-"
+      const endDate = ds.rows[ds.rows.length - 1]?.date ?? "-"
+      return {
+        id: ds.id,
+        avg,
+        max,
+        min,
+        startDate,
+        endDate,
+        days: ds.rows.length
+      }
+    })
+  }, [datasets])
 
-    const { months, menu1, menu2, menu3, menu4, menuLabels } = chartData
+  const getDatasetStats = (id: string) =>
+      statsByDataset.find(s => s.id === id)
+
+  const makeDailyOption = (ds: Dataset) => {
+    const labels = ds.rows.map(r => r.date)
+    const values = ds.rows.map(r => r.users)
+
+    const stats = getDatasetStats(ds.id)
 
     return {
-      textStyle: {
-        color: "#e2e8f0"
-      },
-      color: ["#60a5fa", "#34d399", "#fbbf24", "#fb7185"],
+      textStyle: { color: "#e2e8f0" },
+      color: ["#60a5fa"],
       title: {
-        text: "월별 메뉴별 HIT 수",
-        textStyle: { color: "#f1f5f9" }
+        text: "일간 사용자 수",
+        subtext: stats
+            ? `일수: ${stats.days} / 평균: ${stats.avg.toLocaleString()} / 최대: ${stats.max.toLocaleString()}`
+            : "",
+        textStyle: { color: "#f1f5f9" },
+        subtextStyle: { color: "#94a3b8", fontSize: 11 }
       },
       tooltip: {
         trigger: "axis",
@@ -441,26 +240,17 @@ export default function HomePage() {
         borderColor: "#475569",
         textStyle: { color: "#e2e8f0" }
       },
-      legend: {
-        data: [
-          menuLabels.menu1,
-          menuLabels.menu2,
-          menuLabels.menu3,
-          menuLabels.menu4
-        ],
-        textStyle: { color: "#e2e8f0" }
-      },
       grid: {
         left: "5%",
         right: "5%",
-        top: "15%",
+        top: "20%",
         bottom: "10%",
         containLabel: true
       },
       xAxis: {
         type: "category",
-        data: months,
-        axisLabel: { color: "#f8fafc" },
+        data: labels,
+        axisLabel: { color: "#cbd5f5", fontSize: 10, rotate: 45 },
         axisLine: { lineStyle: { color: "#475569" } },
         axisTick: { lineStyle: { color: "#64748b" } }
       },
@@ -472,95 +262,45 @@ export default function HomePage() {
       },
       series: [
         {
-          name: menuLabels.menu1,
+          name: "Users",
           type: "line",
           smooth: true,
-          data: menu1
-        },
-        {
-          name: menuLabels.menu2,
-          type: "line",
-          smooth: true,
-          data: menu2
-        },
-        {
-          name: menuLabels.menu3,
-          type: "line",
-          smooth: true,
-          data: menu3
-        },
-        {
-          name: menuLabels.menu4,
-          type: "line",
-          smooth: true,
-          data: menu4
+          symbolSize: 5,
+          areaStyle: { opacity: 0.12 },
+          data: values
         }
       ]
     }
   }
 
-  const getHitChartOption = () => {
-    if (!chartData) return {}
+  const toggleCollapse = (id: string) => {
+    setCollapsed(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }))
+  }
 
-    const { months, uniqueUsers, totalHits } = chartData
-
-    return {
-      textStyle: {
-        color: "#e2e8f0"
-      },
-      color: ["#22c55e", "#38bdf8"],
-      title: {
-        text: "월별 고유 접속자 / 전체 HIT",
-        textStyle: { color: "#f1f5f9" }
-      },
-      tooltip: {
-        trigger: "axis",
-        backgroundColor: "rgba(15,23,42,0.95)",
-        borderColor: "#475569",
-        textStyle: { color: "#e2e8f0" }
-      },
-      legend: {
-        data: ["Unique Users", "Total Hits"],
-        textStyle: { color: "#e2e8f0" }
-      },
-      grid: {
-        left: "5%",
-        right: "5%",
-        top: "15%",
-        bottom: "10%",
-        containLabel: true
-      },
-      xAxis: {
-        type: "category",
-        data: months,
-        axisLabel: { color: "#f8fafc" },
-        axisLine: { lineStyle: { color: "#475569" } },
-        axisTick: { lineStyle: { color: "#64748b" } }
-      },
-      yAxis: {
-        type: "value",
-        axisLabel: { color: "#f8fafc" },
-        axisLine: { lineStyle: { color: "#475569" } },
-        splitLine: { lineStyle: { color: "#334155" } }
-      },
-      series: [
-        { name: "Unique Users", type: "line", smooth: true, data: uniqueUsers },
-        { name: "Total Hits", type: "line", smooth: true, data: totalHits }
-      ]
-    }
+  const removeDataset = (id: string) => {
+    if (!confirm("이 데이터셋을 삭제하시겠습니까?")) return
+    setDatasets(prev => prev.filter(d => d.id !== id))
+    setCollapsed(prev => {
+      const copy = { ...prev }
+      delete copy[id]
+      return copy
+    })
   }
 
   return (
       <main style={pageStyle}>
-        {/* ===== 헤더 (글래스) ===== */}
-        <header style={{ ...containerStyle }}>
+        {/* 헤더 영역 */}
+        <header style={containerStyle}>
           <div
               style={{
                 ...headerGlass,
                 padding: "1.6rem 1.8rem",
                 display: "flex",
                 flexDirection: "column",
-                gap: "0.5rem"
+                gap: "0.8rem"
               }}
           >
             <div
@@ -583,7 +323,7 @@ export default function HomePage() {
                       color: "transparent"
                     }}
                 >
-                  월별 사용 통계 대시보드
+                  일간 사용자 대시보드
                 </h1>
                 <p
                     style={{
@@ -592,24 +332,13 @@ export default function HomePage() {
                       marginTop: "0.25rem"
                     }}
                 >
-                  A열: Month, B~E열: Menu1~4 HIT, F열: UniqueUsers, G열: TotalHits
-                  구조의 Excel(.xlsx, .csv)을 업로드하면 자동으로 통계가 시각화됩니다.
+                  A열: Date (yyyy-mm-dd), B열: Users 형식의 Excel(.xlsx, .csv)을
+                  여러 개 업로드하면,
+                  각 파일마다 별도의 일간 사용자 차트가 아래에 추가됩니다.
                 </p>
-                {restored && chartData && (
-                    <p
-                        style={{
-                          fontSize: "0.8rem",
-                          marginTop: "0.2rem",
-                          opacity: 0.85,
-                          color: "#a5b4fc"
-                        }}
-                    >
-                      마지막에 업로드한 데이터가 자동으로 복원되었습니다.
-                    </p>
-                )}
               </div>
 
-              {/* 업로드 영역 (글래스 pill) */}
+              {/* 업로드 영역 */}
               <div
                   style={{
                     display: "flex",
@@ -637,9 +366,7 @@ export default function HomePage() {
                     }}
                 >
                 <span style={{ fontSize: "0.85rem" }}>
-                  {fileName
-                      ? `선택된 파일: ${fileName}`
-                      : "Excel(.xlsx) 파일을 업로드하세요"}
+                  새 Excel(.xlsx / .csv) 파일 추가
                 </span>
                   <span
                       style={{
@@ -662,14 +389,13 @@ export default function HomePage() {
                     style={{ display: "none" }}
                 />
 
-                {fileName && (
+                {datasets.length > 0 && (
                     <button
                         type="button"
                         onClick={() => {
-                          if (fileInputRef.current) fileInputRef.current.value = ""
-                          setFileName(null)
-                          setChartData(null)
-                          setRestored(false)
+                          if (!confirm("모든 데이터셋을 초기화하시겠습니까?")) return
+                          setDatasets([])
+                          setCollapsed({})
                         }}
                         style={{
                           fontSize: "0.8rem",
@@ -681,297 +407,142 @@ export default function HomePage() {
                           padding: 0
                         }}
                     >
-                      파일 다시 선택 / 초기화
+                      모든 차트 초기화
                     </button>
                 )}
               </div>
             </div>
+
+            {/* 뷰 모드 (지금은 일간만, 나중에 주간/월간/연간 추가 가능) */}
+            <div
+                style={{
+                  display: "flex",
+                  gap: "0.5rem",
+                  marginTop: "0.4rem",
+                  flexWrap: "wrap"
+                }}
+            >
+              <button
+                  type="button"
+                  onClick={() => setViewMode("daily")}
+                  style={{
+                    ...pillButton,
+                    borderColor:
+                        viewMode === "daily"
+                            ? "rgba(96,165,250,0.9)"
+                            : "rgba(148,163,184,0.7)",
+                    background:
+                        viewMode === "daily"
+                            ? "linear-gradient(135deg, rgba(59,130,246,0.35), rgba(129,140,248,0.3))"
+                            : "rgba(15,23,42,0.9)"
+                  }}
+              >
+                일간 사용자
+              </button>
+              {/* 주간/월간/연간은 나중에 붙일 자리 */}
+            </div>
           </div>
         </header>
 
-        {/* ===== 차트 영역 (글래스 패널) ===== */}
-        {chartData && (
-            <>
-              <section style={containerStyle}>
-                <div
-                    style={{
-                      ...glassPanel,
-                      padding: "1.4rem 1.2rem",
-                      marginTop: "0.5rem"
-                    }}
-                >
-                  <ReactECharts
-                      option={getMenuChartOption()}
-                      style={{ width: "100%", height: "70vh" }}
-                  />
-                </div>
-              </section>
+        {/* 데이터셋별 차트 카드들 */}
+        <section style={containerStyle}>
+          {datasets.length === 0 && (
+              <p
+                  style={{
+                    marginTop: "2rem",
+                    textAlign: "center",
+                    opacity: 0.7,
+                    fontSize: "0.9rem"
+                  }}
+              >
+                아직 업로드된 데이터가 없습니다. 상단에서 Excel 파일을 추가해 보세요.
+              </p>
+          )}
 
-              <section style={containerStyle}>
-                <div
-                    style={{
-                      ...glassPanel,
-                      padding: "1.4rem 1.2rem",
-                      marginTop: "0.5rem"
-                    }}
-                >
-                  <ReactECharts
-                      option={getHitChartOption()}
-                      style={{ width: "100%", height: "60vh" }}
-                  />
-                </div>
-              </section>
-            </>
-        )}
+          {datasets.map((ds, index) => {
+            const stats = getDatasetStats(ds.id)
+            const isCollapsed = collapsed[ds.id]
 
-        {/* ===== KPI 카드 영역 (글래스 카드) ===== */}
-        {chartData && kpi && (
-            <section style={containerStyle}>
-              {(() => {
-                const labels = chartData.menuLabels
-
-                return (
-                    <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
-                          gap: "1rem"
-                        }}
-                    >
-                      {kpi.latestYearStat && (
-                          <>
-                            {/* 최신 연도 메뉴 전체 (1~4 합산) */}
-                            <div style={kpiCardSlate}>
-                              <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                                {kpi.latestYearStat.year}년 메뉴 HIT (전체)
-                              </div>
-                              <div
-                                  style={{
-                                    fontSize: "1.05rem",
-                                    marginTop: "0.35rem",
-                                    fontWeight: 600
-                                  }}
-                              >
-                                전체:{" "}
-                                <strong>
-                                  {kpi.latestYearStat.menuAllSum.toLocaleString()}
-                                </strong>
-                              </div>
-                              <div
-                                  style={{
-                                    fontSize: "0.9rem",
-                                    marginTop: "0.25rem",
-                                    opacity: 0.85
-                                  }}
-                              >
-                                연평균:{" "}
-                                <strong>
-                                  {kpi.latestYearStat.menuAllAvg.toLocaleString()}
-                                </strong>
-                              </div>
-                              <div
-                                  style={{
-                                    fontSize: "0.75rem",
-                                    marginTop: "0.25rem",
-                                    opacity: 0.65
-                                  }}
-                              >
-                                (Menu1~4 합산 기준)
-                              </div>
-                            </div>
-
-                            {/* Menu1 연도별 */}
-                            <div style={kpiCardBlue}>
-                              <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                                {kpi.latestYearStat.year}년 {labels.menu1} HIT
-                              </div>
-                              <div
-                                  style={{
-                                    fontSize: "1.05rem",
-                                    marginTop: "0.35rem",
-                                    fontWeight: 600
-                                  }}
-                              >
-                                전체:{" "}
-                                <strong>
-                                  {kpi.latestYearStat.menu1Sum.toLocaleString()}
-                                </strong>
-                              </div>
-                              <div
-                                  style={{
-                                    fontSize: "0.9rem",
-                                    marginTop: "0.25rem",
-                                    opacity: 0.85
-                                  }}
-                              >
-                                연평균:{" "}
-                                <strong>
-                                  {kpi.latestYearStat.menu1Avg.toLocaleString()}
-                                </strong>
-                              </div>
-                            </div>
-
-                            {/* Menu2 연도별 */}
-                            <div style={kpiCardGreen}>
-                              <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                                {kpi.latestYearStat.year}년 {labels.menu2} HIT
-                              </div>
-                              <div
-                                  style={{
-                                    fontSize: "1.05rem",
-                                    marginTop: "0.35rem",
-                                    fontWeight: 600
-                                  }}
-                              >
-                                전체:{" "}
-                                <strong>
-                                  {kpi.latestYearStat.menu2Sum.toLocaleString()}
-                                </strong>
-                              </div>
-                              <div
-                                  style={{
-                                    fontSize: "0.9rem",
-                                    marginTop: "0.25rem",
-                                    opacity: 0.85
-                                  }}
-                              >
-                                연평균:{" "}
-                                <strong>
-                                  {kpi.latestYearStat.menu2Avg.toLocaleString()}
-                                </strong>
-                              </div>
-                            </div>
-
-                            {/* Menu3 연도별 */}
-                            <div style={kpiCardAmber}>
-                              <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                                {kpi.latestYearStat.year}년 {labels.menu3} HIT
-                              </div>
-                              <div
-                                  style={{
-                                    fontSize: "1.05rem",
-                                    marginTop: "0.35rem",
-                                    fontWeight: 600
-                                  }}
-                              >
-                                전체:{" "}
-                                <strong>
-                                  {kpi.latestYearStat.menu3Sum.toLocaleString()}
-                                </strong>
-                              </div>
-                              <div
-                                  style={{
-                                    fontSize: "0.9rem",
-                                    marginTop: "0.25rem",
-                                    opacity: 0.85
-                                  }}
-                              >
-                                연평균:{" "}
-                                <strong>
-                                  {kpi.latestYearStat.menu3Avg.toLocaleString()}
-                                </strong>
-                              </div>
-                            </div>
-
-                            {/* Menu4 연도별 */}
-                            <div style={kpiCardPink}>
-                              <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                                {kpi.latestYearStat.year}년 {labels.menu4} HIT
-                              </div>
-                              <div
-                                  style={{
-                                    fontSize: "1.05rem",
-                                    marginTop: "0.35rem",
-                                    fontWeight: 600
-                                  }}
-                              >
-                                전체:{" "}
-                                <strong>
-                                  {kpi.latestYearStat.menu4Sum.toLocaleString()}
-                                </strong>
-                              </div>
-                              <div
-                                  style={{
-                                    fontSize: "0.9rem",
-                                    marginTop: "0.25rem",
-                                    opacity: 0.85
-                                  }}
-                              >
-                                연평균:{" "}
-                                <strong>
-                                  {kpi.latestYearStat.menu4Avg.toLocaleString()}
-                                </strong>
-                              </div>
-                            </div>
-
-                            {/* 최신 연도 고유 접속자 */}
-                            <div style={kpiCardCyan}>
-                              <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                                {kpi.latestYearStat.year}년 Unique Users
-                              </div>
-                              <div
-                                  style={{
-                                    fontSize: "1.05rem",
-                                    marginTop: "0.35rem",
-                                    fontWeight: 600
-                                  }}
-                              >
-                                전체:{" "}
-                                <strong>
-                                  {kpi.latestYearStat.userSum.toLocaleString()}
-                                </strong>
-                              </div>
-                              <div
-                                  style={{
-                                    fontSize: "0.9rem",
-                                    marginTop: "0.25rem",
-                                    opacity: 0.85
-                                  }}
-                              >
-                                연평균:{" "}
-                                <strong>
-                                  {kpi.latestYearStat.userAvg.toLocaleString()}
-                                </strong>
-                              </div>
-                            </div>
-
-                            {/* 최신 연도 Total Hits */}
-                            <div style={kpiCardIndigo}>
-                              <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>
-                                {kpi.latestYearStat.year}년 Total Hits
-                              </div>
-                              <div
-                                  style={{
-                                    fontSize: "1.05rem",
-                                    marginTop: "0.35rem",
-                                    fontWeight: 600
-                                  }}
-                              >
-                                전체:{" "}
-                                <strong>
-                                  {kpi.latestYearStat.hitSum.toLocaleString()}
-                                </strong>
-                              </div>
-                              <div
-                                  style={{
-                                    fontSize: "0.9rem",
-                                    marginTop: "0.25rem",
-                                    opacity: 0.85
-                                  }}
-                              >
-                                연평균:{" "}
-                                <strong>
-                                  {kpi.latestYearStat.hitAvg.toLocaleString()}
-                                </strong>
-                              </div>
-                            </div>
-                          </>
+            return (
+                <div key={ds.id} style={chartCard}>
+                  {/* 카드 상단 헤더 (파일명 + 간단 요약 + 버튼들) */}
+                  <div style={chartHeaderRow}>
+                    <div>
+                      <div
+                          style={{
+                            fontSize: "0.85rem",
+                            opacity: 0.8,
+                            marginBottom: "0.2rem"
+                          }}
+                      >
+                        {index + 1}번째 데이터셋
+                      </div>
+                      <div style={{ fontSize: "1rem", fontWeight: 600 }}>
+                        {ds.fileName}
+                      </div>
+                      {stats && (
+                          <div
+                              style={{
+                                fontSize: "0.78rem",
+                                opacity: 0.75,
+                                marginTop: "0.15rem"
+                              }}
+                          >
+                            기간: {stats.startDate} ~ {stats.endDate} / 일수:{" "}
+                            {stats.days} / 일평균:{" "}
+                            {stats.avg.toLocaleString()} / 최대:{" "}
+                            {stats.max.toLocaleString()}
+                          </div>
                       )}
                     </div>
-                )
-              })()}
-            </section>
-        )}
+
+                    <div
+                        style={{
+                          display: "flex",
+                          gap: "0.4rem",
+                          alignItems: "center",
+                          flexWrap: "wrap"
+                        }}
+                    >
+                      <button
+                          type="button"
+                          onClick={() => toggleCollapse(ds.id)}
+                          style={{
+                            ...pillButton,
+                            borderColor: "rgba(129,140,248,0.9)"
+                          }}
+                      >
+                        {isCollapsed ? "차트 펼치기" : "차트 접기"}
+                      </button>
+                      <button
+                          type="button"
+                          onClick={() => removeDataset(ds.id)}
+                          style={{
+                            ...pillButton,
+                            borderColor: "rgba(248,113,113,0.9)",
+                            color: "#fecaca"
+                          }}
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 차트 본문 (접기 상태가 아니면 렌더링) */}
+                  {!isCollapsed && (
+                      <div style={{ marginTop: "0.6rem" }}>
+                        {viewMode === "daily" && (
+                            <ReactECharts
+                                option={makeDailyOption(ds)}
+                                style={{ width: "100%", height: "55vh" }}
+                            />
+                        )}
+                      </div>
+                  )}
+                </div>
+            )
+          })}
+        </section>
       </main>
   )
 }
